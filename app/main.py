@@ -215,6 +215,51 @@ WIDGET_HTML = r'''<!doctype html>
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
   const INDEX_MAP = ORDER.reduce((acc,name,i)=>{ acc[String(i+1)]=name; acc[String(i)]=name; return acc; },{}); // 1-based y 0-based
 
+// —— Traducciones de aspectos al español (robusto con variantes)
+const ASPECT_ES = {
+  "conjunction":"Conjunción",
+  "opp":"Oposición","opposition":"Oposición",
+  "square":"Cuadratura","quartile":"Cuadratura",
+  "trine":"Trígono",
+  "sextile":"Sextil",
+  "quincunx":"Quincuncio","inconjunct":"Quincuncio",
+  "semi-square":"Semicuadratura","semisquare":"Semicuadratura","semi_square":"Semicuadratura",
+  "sesquiquadrate":"Sesquicuadratura","sesqui-quadrate":"Sesquicuadratura","sesqui_quadrate":"Sesquicuadratura",
+  "semi-sextile":"Semisextil","semisextile":"Semisextil","semi_sextile":"Semisextil",
+  "quintile":"Quintil","biquintile":"Biquintil",
+  "novile":"Novil","binovile":"Binovil",
+  "septile":"Septil","biseptile":"Biseptil","triseptile":"Triseptil",
+  "undecile":"Undécil"
+};
+
+// —— Ángulo teórico de cada aspecto (para calcular el orbe)
+const ASPECT_DEG = {
+  "conjunction":0,
+  "opposition":180,"opp":180,
+  "square":90,"quartile":90,
+  "trine":120,
+  "sextile":60,
+  "quincunx":150,"inconjunct":150,
+  "semisextile":30,"semi-sextile":30,"semi_sextile":30,
+  "semisquare":45,"semi-square":45,"semi_square":45,
+  "sesquiquadrate":135,"sesqui-quadrate":135,"sesqui_quadrate":135,
+  "quintile":72,"biquintile":144,
+  "novile":40,"binovile":80,
+  "septile":51.4286,"biseptile":102.8571,"triseptile":154.2857,
+  "undecile":32.7273
+};
+
+// —— utilidades para orbe
+function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
+function fmtDegMin(x){
+  const d = Math.floor(x), m = Math.round((x - d)*60);
+  const mm = (m===60)? 0 : m;
+  const dd = (m===60)? d+1 : d;
+  return `${dd}°${String(mm).padStart(2,"0")}'`;
+}
+
+
+
   function buildPointMaps(points){
     const byKey = {};
     points.forEach((p,idx)=>{
