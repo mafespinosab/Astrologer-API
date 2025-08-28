@@ -225,9 +225,9 @@ WIDGET_HTML = r'''<!doctype html>
     septile:"Septil", biseptile:"Biseptil", triseptile:"Triseptil", undecile:"Undécil"
   };
 
-  // ===== Lista aceptada por la API (EXCLUYE True_Node como pediste)
+  // ===== Lista aceptada por la API (EXCLUYE True_Node)
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
-  // backends a veces ponen índices numéricos; mapeo 0/1-based y ángulos
+  // backends a veces devuelven índices; mapeo 0/1-based y ángulos
   const NUM2CAN = {"0":"Sun","17":"Ascendant","18":"Medium_Coeli","19":"Descendant","20":"Imum_Coeli"};
 
   const POINT_ES = {
@@ -235,7 +235,7 @@ WIDGET_HTML = r'''<!doctype html>
     "Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón",
     "Ascendant":"Ascendente","Descendant":"Descendente",
     "Medium_Coeli":"Medio Cielo","Imum_Coeli":"Fondo del Cielo",
-    "Mean_Node":"Nodo Norte (medio)","Mean_South_Node":"Nodo Sur (medio)",
+    "Mean_Node":"Nodo Norte","Mean_South_Node":"Nodo Sur",
     "Chiron":"Quirón","Mean_Lilith":"Lilith (media)"
   };
 
@@ -383,7 +383,7 @@ WIDGET_HTML = r'''<!doctype html>
         html += `<h3>Casas (cúspides)</h3><table>${head}${body}</table>`;
       }
 
-      // Aspectos → normalizar claves, filtrar True_Node y CALCULAR ORBE
+      // Aspectos → normalizar claves, filtrar True_Node y CALCULAR ORBE SIEMPRE
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
       if(aspects.length){
         const rowsA = aspects.map(a=>{
@@ -402,24 +402,18 @@ WIDGET_HTML = r'''<!doctype html>
           const disp1  = toES(canon1);
           const disp2  = toES(canon2);
 
-          // separación: usa la del backend si existe; si no, la calculo con longitudes
+          // separación real: uso la del backend si viene; si no, la calculo con longitudes
           const l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2];
           const sepField = Number(a.separation ?? a.sep ?? a.sep_deg ?? a.angle ?? a.angle_deg ?? a.aspect_angle);
-          const sep = Number.isFinite(sepField)
-            ? Math.abs(sepField)
-            : (Number.isFinite(l1) && Number.isFinite(l2) ? minSepDeg(l1,l2) : NaN);
+          const sep = Number.isFinite(sepField) ? Math.abs(sepField)
+                    : (Number.isFinite(l1) && Number.isFinite(l2) ? minSepDeg(l1,l2) : NaN);
 
-          // orbe: si no vino, lo calculo (|sep - target|)
-          let orb = a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
-          if((orb === "" || orb == null) && Number.isFinite(target) && Number.isFinite(sep)){
-            orb = fmtDegMin(Math.abs(sep - target));
-          } else {
-            const on = Number(orb);
-            if(Number.isFinite(on)) orb = fmtDegMin(Math.abs(on));
-            if(!orb) orb = "—";
-          }
+          // ORBE = |sep − target| (ignoramos cualquier "orb"/"delta" del backend)
+          const orb = (Number.isFinite(sep) && Number.isFinite(target))
+            ? fmtDegMin(Math.abs(sep - target))
+            : "—";
 
-          return [label || "—", disp1 || "—", disp2 || "—", orb || "—"];
+          return [label || "—", disp1 || "—", disp2 || "—", orb];
         }).filter(Boolean);
 
         const head = "<thead><tr><th>Aspecto</th><th>Cuerpo 1</th><th>Cuerpo 2</th><th>Orbe</th></tr></thead>";
@@ -442,6 +436,7 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
+
 
 
 
