@@ -62,23 +62,14 @@ WIDGET_HTML = r'''<!doctype html>
     background:#fff;color:#000;border-radius:12px;line-height:1.2
   }
   button{cursor:pointer;font-weight:800}
-  /* más espacio y columnas iguales */
-  .row{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:36px;
-    align-items:start;
-  }
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:start}
   .mt{margin-top:18px}
   .alert{border:1px solid var(--line);background:#fff;color:#000;border-radius:12px;padding:12px;margin:12px 0;display:none;white-space:pre-wrap}
   .ok{border:1px solid var(--line);padding:26px;border-radius:12px;margin-top:18px}
   .ok > * + *{margin-top:18px}
-
-  /* Tablas: columnas consistentes */
   table{width:100%;border-collapse:collapse;margin-top:16px;table-layout:fixed}
   thead th{background:#f7f7f7}
   th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;font-size:14px;word-break:break-word;vertical-align:top}
-
   .svgwrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:10px;background:#fff}
   #svg svg{max-width:100%;height:auto;display:block}
   @media (max-width:780px){ .row{grid-template-columns:1fr} }
@@ -163,11 +154,10 @@ WIDGET_HTML = r'''<!doctype html>
   // ===== Parámetros por URL =====
   const q       = new URLSearchParams(location.search);
   const LANG    = q.get('lang')    || 'ES';
-  const THEME   = q.get('theme')   || 'light';   // claro por defecto
+  const THEME   = q.get('theme')   || 'light';
   const GEOUSER = q.get('geouser') || 'mofeto';
   const TITLE   = q.get('title')   || 'Tu carta natal';
   const SHOW_SID= (q.get('sidereal') === 'on');
-
   document.getElementById('titulo').textContent = decodeURIComponent(TITLE||'');
   if(SHOW_SID){ document.getElementById('row-sidereal').style.display='grid'; }
 
@@ -182,6 +172,8 @@ WIDGET_HTML = r'''<!doctype html>
   const ISO2 = {"colombia":"CO","argentina":"AR","chile":"CL","peru":"PE","ecuador":"EC","venezuela":"VE","uruguay":"UY","paraguay":"PY","bolivia":"BO","mexico":"MX","méxico":"MX","españa":"ES","espana":"ES","spain":"ES","portugal":"PT","francia":"FR","france":"FR","italia":"IT","italy":"IT","alemania":"DE","germany":"DE","reino unido":"GB","uk":"GB","inglaterra":"GB","united kingdom":"GB","estados unidos":"US","eeuu":"US","usa":"US","united states":"US","brasil":"BR","brazil":"BR","canadá":"CA","canada":"CA"};
   const splitDate = d => { const [y,m,day]=(d||'').split('-').map(n=>parseInt(n,10)); return {year:y,month:m,day}; };
   const splitTime = t => { const [h,mi]=(t||'00:00').split(':').map(n=>parseInt(n,10)); return {hour:h,minute:mi}; };
+  function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
+  function fmtDegMin(x){ const d=Math.floor(x), m=Math.round((x-d)*60); const dd=(m===60)?d+1:d; const mm=(m===60)?0:m; return `${dd}°${String(mm).padStart(2,"0")}'`; }
 
   async function call(path, payload, expectSVG=false){
     const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -195,25 +187,17 @@ WIDGET_HTML = r'''<!doctype html>
     else return r.text();
   }
 
-  // ===== Tablas =====
-  function tableHTML(head, rows){
-    const thead = "<thead><tr>"+head.map(h=>`<th>${h}</th>`).join("")+"</tr></thead>";
-    const tbody = "<tbody>"+rows.map(r=>"<tr>"+r.map(c=>`<td>${(c??"")||"—"}</td>`).join("")+"</tr>").join("")+"</tbody>";
-    return `<table>${thead}${tbody}</table>`;
-  }
+  // ===== Signos / grados
   function signFromLon(lon){ const i=Math.floor((((lon%360)+360)%360)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
   function degStr(lon){ const d=((lon%360)+360)%360; const g=Math.floor(d%30); const m=Math.round((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
-  function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
-  function fmtDegMin(x){ const d=Math.floor(x), m=Math.round((x-d)*60); const dd=(m===60)?d+1:d; const mm=(m===60)?0:m; return `${dd}°${String(mm).padStart(2,"0")}'`; }
 
-  // ——— Puntos canónicos (EN) y sus traducciones ES
+  // ——— Puntos canónicos (EN) y nombres ES
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
   const POINT_ES = {
     "Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno",
     "Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón","Ascendant":"Ascendente","Medium_Coeli":"Medio Cielo",
     "Mean_Node":"Nodo Norte (medio)","Mean_South_Node":"Nodo Sur (medio)","Chiron":"Quirón","Mean_Lilith":"Lilith (media)"
   };
-  const INDEX_MAP = ORDER.reduce((acc,name,i)=>{ acc[String(i+1)]=name; acc[String(i)]=name; return acc; },{});
   // sinónimos EN/ES → canónico EN
   const SYN = {
     "sol":"Sun","sun":"Sun",
@@ -221,7 +205,7 @@ WIDGET_HTML = r'''<!doctype html>
     "mercurio":"Mercury","mercury":"Mercury",
     "venus":"Venus",
     "marte":"Mars","mars":"Mars",
-    "jupiter":"Jupiter","júpiter":"Jupiter","júpiter":"Jupiter",
+    "jupiter":"Jupiter","júpiter":"Jupiter",
     "saturno":"Saturn","saturn":"Saturn",
     "urano":"Uranus","uranus":"Uranus",
     "neptuno":"Neptune","neptune":"Neptune",
@@ -233,19 +217,8 @@ WIDGET_HTML = r'''<!doctype html>
     "quiron":"Chiron","quirón":"Chiron","chiron":"Chiron",
     "lilith":"Mean_Lilith","lilith (media)":"Mean_Lilith","mean_lilith":"Mean_Lilith"
   };
-  function toCanonicalName(x){
-    if(x==null) return "";
-    const s = String(x).trim();
-    if(/^\d+$/.test(s)) return INDEX_MAP[s] || INDEX_MAP[String(parseInt(s,10))] || s;
-    const k = s.toLowerCase();
-    if(POINT_ES[s]) return s; // ya es canónico EN
-    return SYN[k] || s;
-  }
-  function toSpanishName(canonicalEN){
-    return POINT_ES[canonicalEN] || canonicalEN;
-  }
 
-  // ——— Aspectos en español + ángulos teóricos (para ORBE)
+  // —— Aspectos (ES) y ángulos teóricos para orbe
   const ASPECT_ES = {
     "conjunction":"Conjunción","opp":"Oposición","opposition":"Oposición",
     "square":"Cuadratura","quartile":"Cuadratura","trine":"Trígono","sextile":"Sextil",
@@ -263,34 +236,57 @@ WIDGET_HTML = r'''<!doctype html>
     "quintile":72,"biquintile":144,"novile":40,"binovile":80,"septile":51.4286,"biseptile":102.8571,"triseptile":154.2857,"undecile":32.7273
   };
 
-  const label = x => {
-    if(x==null) return "";
-    if(typeof x === "string" || typeof x === "number") return String(x);
-    return x.name || x.point || x.body || x.id || x.code || x.symbol || x.title || x.label || "";
-  };
-
+  // ===== Mapeos dinámicos desde los puntos devueltos por la API
   function buildPointMaps(points){
-    const lonByCanon = {}; // longitudes por nombre canónico EN
-    const rows = [];
+    const aliasToCanon = {};      // cualquier alias -> nombre canónico EN
+    const lonByCanon   = {};      // longitudes por canónico EN
+    const rowsCanon    = [];      // filas con canónico EN
+
     points.forEach((p,idx)=>{
       const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos ?? null;
-      const raw = p.name || p.point || p.id || ORDER[idx] || `P${idx+1}`;
-      const canon = toCanonicalName(raw);
-      const canonFinal = ORDER.includes(canon) ? canon : (ORDER[idx] || canon);
-      if(lon!=null) lonByCanon[canonFinal] = Number(lon);
-      const house = p.house ?? p.house_number ?? "";
-      rows.push([canonFinal, signFromLon(Number(lon||0)), degStr(Number(lon||0)), house]);
+      const raw = p.name || p.point || p.id || p.code || ORDER[idx] || `P${idx+1}`;
+      // nombre canónico base (si es uno de ORDER, úsalo; si no, intenta sinónimos; si no, deja raw)
+      const maybeCanon = ORDER.includes(raw) ? raw : (SYN[String(raw).toLowerCase()] || raw);
+      const canon = ORDER[idx] && !ORDER.includes(maybeCanon) ? ORDER[idx] : maybeCanon;
+
+      if(lon!=null) lonByCanon[canon] = Number(lon);
+
+      // registra alias (múltiples claves apuntan al canónico)
+      [raw, p.id, p.point, p.code, p.symbol, p.name, p.body, p.planet, String(idx), String(idx+1)]
+        .filter(Boolean)
+        .forEach(a => aliasToCanon[String(a).toLowerCase()] = canon);
+
+      // sinónimos comunes
+      aliasToCanon['asc'] = 'Ascendant'; aliasToCanon['ascendente']='Ascendant'; aliasToCanon['as']='Ascendant'; aliasToCanon['ascendant']='Ascendant';
+      aliasToCanon['mc']='Medium_Coeli'; aliasToCanon['medium_coeli']='Medium_Coeli'; aliasToCanon['midheaven']='Medium_Coeli'; aliasToCanon['medio cielo']='Medium_Coeli';
+      aliasToCanon['nn']='Mean_Node'; aliasToCanon['north node']='Mean_Node'; aliasToCanon['nodo norte']='Mean_Node'; aliasToCanon['node']='Mean_Node';
+      aliasToCanon['sn']='Mean_South_Node'; aliasToCanon['south node']='Mean_South_Node'; aliasToCanon['nodo sur']='Mean_South_Node';
+
+      rowsCanon.push([canon, lon, p.house ?? p.house_number ?? ""]);
     });
-    // orden
-    rows.sort((a,b)=> (ORDER.indexOf(a[0])==-1?99:ORDER.indexOf(a[0])) - (ORDER.indexOf(b[0])==-1?99:ORDER.indexOf(b[0])) );
-    // traducir nombres a ES para mostrar
-    const rowsES = rows.map(([canon,sign,deg,house])=>[toSpanishName(canon),sign,deg,house]);
-    return {rowsES, lonByCanon};
+
+    // tabla planetas/puntos (en ES)
+    const rowsES = rowsCanon
+      .map(([canon,lon,house])=>[canon, signFromLon(Number(lon||0)), degStr(Number(lon||0)), house])
+      .sort((a,b)=> (ORDER.indexOf(a[0])==-1?99:ORDER.indexOf(a[0])) - (ORDER.indexOf(b[0])==-1?99:ORDER.indexOf(b[0])) )
+      .map(([canon,sign,deg,house])=>[POINT_ES[canon]||canon.replace(/_/g,' '),sign,deg,house]);
+
+    return { aliasToCanon, lonByCanon, rowsES };
   }
 
-  function pickBody1(a){ return a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a["1"]||a.from||a.name1||a.p1_name||a.object1_name||a.body1||a.pointOne||a.left||a.idx1||a.index1||a.i1||""; }
-  function pickBody2(a){ return a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a["2"]||a.to||a.name2||a.p2_name||a.object2_name||a.body2||a.pointTwo||a.right||a.idx2||a.index2||a.i2||""; }
-  const pickOrb = a => a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
+  // resolver nombre canónico a partir de cualquier cosa (número, alias, etc.)
+  function toCanonDynamic(x, maps){
+    if(x==null) return "";
+    const s = String(x).trim();
+    const k = s.toLowerCase();
+    if(/^\d+$/.test(s) && maps.aliasToCanon[s]) return maps.aliasToCanon[s];   // índice 1..N
+    return maps.aliasToCanon[k] || SYN[k] || s;
+  }
+  function toSpanishName(canon){ return POINT_ES[canon] || canon.replace(/_/g,' '); }
+
+  const pickBody1 = a => a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a["1"]||a.from||a.name1||a.p1_name||a.object1_name||a.body1||a.pointOne||a.left||a.idx1||a.index1||a.i1||"";
+  const pickBody2 = a => a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a["2"]||a.to||a.name2||a.p2_name||a.object2_name||a.body2||a.pointTwo||a.right||a.idx2||a.index2||a.i2||"";
+  const pickOrb   = a => a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
 
   async function generar(){
     try{
@@ -317,77 +313,81 @@ WIDGET_HTML = r'''<!doctype html>
 
       const active_points=[...ORDER];
 
-      // 1) SVG
+      // 1) SVG (tema claro por defecto)
       const svg = await call('/api/v4/birth-chart',{ subject, language:LANG, theme:THEME, style:THEME, chart_theme:THEME, active_points },true);
       if(!svg || !svg.includes('<svg')) throw new Error('El servidor no devolvió el SVG.');
       $svg.innerHTML=svg;
 
-      // 2) Datos
+      // 2) Datos (planetas/puntos + mapas dinámicos)
       const data = await call('/api/v4/natal-aspects-data',{ subject, language:LANG, active_points },false);
+      const ptsRaw = Array.isArray(data) ? data :
+                     (data?.planets && Array.isArray(data.planets)) ? data.planets :
+                     (data?.points) ? data.points :
+                     (data?.celestial_points) ? data.celestial_points :
+                     (data?.planets && typeof data.planets==='object') ? Object.values(data.planets) : [];
+      const maps = buildPointMaps(ptsRaw);
 
-      // Puntos: filas (ya en ES) + longitudes por nombre canónico
-      const ptsRaw = (function pickPoints(d){
-        if(Array.isArray(d)) return d;
-        if(d?.planets && Array.isArray(d.planets)) return d.planets;
-        if(d?.planets && typeof d.planets==='object') return Object.values(d.planets);
-        if(d?.points) return d.points;
-        if(d?.celestial_points) return d.celestial_points;
-        return [];
-      })(data);
-      const {rowsES:pts, lonByCanon} = buildPointMaps(ptsRaw);
+      // Render tabla de puntos
+      let html="";
+      if(maps.rowsES.length) html += "<h3>Planetas / Puntos</h3>"+(function(head, rows){
+        const thead = "<thead><tr>"+head.map(h=>`<th>${h}</th>`).join("")+"</tr></thead>";
+        const tbody = "<tbody>"+rows.map(r=>"<tr>"+r.map(c=>`<td>${(c??"")||"—"}</td>`).join("")+"</tr>").join("")+"</tbody>";
+        return `<table>${thead}${tbody}</table>`;
+      })(["Cuerpo","Signo","Grado","Casa"], maps.rowsES);
 
       // Casas
-      const hsRaw = (function pickHouses(d){
-        if(d?.houses && Array.isArray(d.houses)) return d.houses;
-        if(d?.houses && typeof d.houses==='object') return Object.values(d.houses);
-        if(d?.house_cusps) return d.house_cusps;
-        return [];
-      })(data);
-      const hs = hsRaw.map((h,i)=>{
-        const lon = h.longitude ?? h.lon ?? h.longitude_deg ?? (h.ecliptic && h.ecliptic.lon) ?? h.abs_pos ?? 0;
-        const num = h.number ?? h.house ?? (i+1);
-        return [num, signFromLon(Number(lon||0)), degStr(Number(lon||0))];
-      });
-
-      // Aspectos → español + ORBE (si falta, lo calculo)
-      const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
-      let rowsA = aspects.map(a=>{
-        const tRaw = (a.type || a.aspect || a.kind || "").toString().trim();
-        const tKey = tRaw.toLowerCase().replace(/\s+/g,"_").replace(/-/g,"_");
-        const tEs  = ASPECT_ES[tKey] || (tRaw ? tRaw.charAt(0).toUpperCase()+tRaw.slice(1) : "");
-
-        // nombres canónicos EN -> luego traduzco a ES para mostrar
-        const canon1 = toCanonicalName(label(pickBody1(a)));
-        const canon2 = toCanonicalName(label(pickBody2(a)));
-        const disp1  = toSpanishName(ORDER.includes(canon1)?canon1:(INDEX_MAP[canon1]||canon1));
-        const disp2  = toSpanishName(ORDER.includes(canon2)?canon2:(INDEX_MAP[canon2]||canon2));
-
-        // orbe
-        let orb = pickOrb(a);
-        if(orb === "" || orb == null){
-          const c1 = ORDER.includes(canon1) ? canon1 : SYN[canon1?.toLowerCase?.()] || INDEX_MAP[canon1] || canon1;
-          const c2 = ORDER.includes(canon2) ? canon2 : SYN[canon2?.toLowerCase?.()] || INDEX_MAP[canon2] || canon2;
-          const l1 = lonByCanon[c1]; const l2 = lonByCanon[c2];
-          const target = ASPECT_DEG[tKey];
-          if(l1!=null && l2!=null && target!=null){
-            const sep  = minSepDeg(l1,l2);
-            const odeg = Math.abs(sep - target);
-            orb = fmtDegMin(odeg);
-          } else { orb = "—"; }
-        } else {
-          const n = Number(orb);
-          if(Number.isFinite(n)) orb = fmtDegMin(Math.abs(n));
-        }
-        return [tEs, disp1 || "—", disp2 || "—", orb || "—"];
-      });
-
-      // Render
-      let html="";
-      if(pts.length) html += "<h3>Planetas / Puntos</h3>"+tableHTML(["Cuerpo","Signo","Grado","Casa"], pts);
-      if(hs.length)  html += "<h3>Casas (cúspides)</h3>"+tableHTML(["Casa","Signo","Grado"], hs);
-      if(rowsA.length && rowsA.some(r=>r[1]||r[2]||r[3])) {
-        html += "<h3>Aspectos</h3>"+tableHTML(["Aspecto","Cuerpo 1","Cuerpo 2","Orbe"], rowsA);
+      const hsRaw = (data?.houses && Array.isArray(data.houses)) ? data.houses :
+                    (data?.houses && typeof data.houses==='object') ? Object.values(data.houses) :
+                    (data?.house_cusps) ? data.house_cusps : [];
+      if(hsRaw.length){
+        const hs = hsRaw.map((h,i)=>{
+          const lon = h.longitude ?? h.lon ?? h.longitude_deg ?? (h.ecliptic && h.ecliptic.lon) ?? h.abs_pos ?? 0;
+          const num = h.number ?? h.house ?? (i+1);
+          return [num, signFromLon(Number(lon||0)), degStr(Number(lon||0))];
+        });
+        html += "<h3>Casas (cúspides)</h3>"+(function(head, rows){
+          const thead = "<thead><tr>"+head.map(h=>`<th>${h}</th>`).join("")+"</tr></thead>";
+          const tbody = "<tbody>"+rows.map(r=>"<tr>"+r.map(c=>`<td>${(c??"")||"—"}</td>`).join("")+"</tr>").join("")+"</tbody>";
+          return `<table>${thead}${tbody}</table>`;
+        })(["Casa","Signo","Grado"], hs);
       }
+
+      // Aspectos → español + ORBE calculado si falta
+      const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
+      if(aspects.length){
+        const rowsA = aspects.map(a=>{
+          const tRaw = (a.type || a.aspect || a.kind || "").toString().trim();
+          const tKey = tRaw.toLowerCase().replace(/\s+/g,"_").replace(/-/g,"_");
+          const tEs  = ASPECT_ES[tKey] || (tRaw ? tRaw.charAt(0).toUpperCase()+tRaw.slice(1) : "");
+
+          const canon1 = toCanonDynamic(a.point_1??a.body_1??a.point1??a.a??a.p1??a.obj1??a.object1??a.planet1??a.c1??a.first??a["1"]??a.from??a.name1??a.p1_name, maps);
+          const canon2 = toCanonDynamic(a.point_2??a.body_2??a.point2??a.b??a.p2??a.obj2??a.object2??a.planet2??a.c2??a.second??a["2"]??a.to??a.name2??a.p2_name, maps);
+          const disp1  = toSpanishName(canon1);
+          const disp2  = toSpanishName(canon2);
+
+          // ORBE: usa el que venga o lo calculo con longitudes y ángulo teórico
+          let orb = a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
+          if(orb === "" || orb == null){
+            const l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2], target = ASPECT_DEG[tKey];
+            if(l1!=null && l2!=null && target!=null){
+              const sep  = minSepDeg(l1,l2);
+              const odeg = Math.abs(sep - target);
+              orb = fmtDegMin(odeg);
+            } else { orb = "—"; }
+          } else {
+            const n = Number(orb);
+            if(Number.isFinite(n)) orb = fmtDegMin(Math.abs(n));
+          }
+          return [tEs || "—", disp1 || "—", disp2 || "—", orb || "—"];
+        });
+
+        html += "<h3>Aspectos</h3>"+(function(head, rows){
+          const thead = "<thead><tr>"+head.map(h=>`<th>${h}</th>`).join("")+"</tr></thead>";
+          const tbody = "<tbody>"+rows.map(r=>"<tr>"+r.map(c=>`<td>${(c??"")||"—"}</td>`).join("")+"</tr>").join("")+"</tbody>";
+          return `<table>${thead}${tbody}</table>`;
+        })(["Aspecto","Cuerpo 1","Cuerpo 2","Orbe"], rowsA);
+      }
+
       document.getElementById('tablas').innerHTML = html || "<p style='color:#555'>Recibí datos, pero no había tablas para mostrar.</p>";
       $out.style.display='block';
 
@@ -403,6 +403,7 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
+
 
 
 
