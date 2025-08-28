@@ -51,31 +51,29 @@ WIDGET_HTML = r"""<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Carta</title>
 <style>
-  :root{
-    --ink:#111; --line:#000;
-  }
+  :root{ --ink:#111; --line:#000; }
   body{font-family:system-ui,Arial,sans-serif;color:var(--ink);background:#fff;margin:0}
-  .box{max-width:900px;margin:0 auto;padding:24px 20px}
-  h2{font-weight:700;margin:0 0 14px}
+  .box{max-width:980px;margin:0 auto;padding:28px 24px}
+  h2{font-weight:800;margin:0 0 16px}
   label{display:block;font-size:14px;margin:10px 0 4px}
-  input,select,button{width:100%;padding:10px;border:1px solid var(--line);background:#fff;color:#000;border-radius:6px}
-  button{cursor:pointer;font-weight:700}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .mt{margin-top:14px}
+  input,select,button{width:100%;padding:10px;border:1px solid var(--line);background:#fff;color:#000;border-radius:8px}
+  button{cursor:pointer;font-weight:800}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .mt{margin-top:16px}
   .muted{color:#555;font-size:12px}
-  .alert{border:1px solid var(--line);background:#fff;color:#000;border-radius:8px;padding:10px;margin:10px 0;display:none;white-space:pre-wrap}
-  .ok{border:1px solid var(--line);padding:20px;border-radius:8px;margin-top:16px}
-  .ok > * + *{margin-top:16px}
+  .alert{border:1px solid var(--line);background:#fff;color:#000;border-radius:10px;padding:12px;margin:12px 0;display:none;white-space:pre-wrap}
+  .ok{border:1px solid var(--line);padding:24px;border-radius:12px;margin-top:18px}
+  .ok > * + *{margin-top:18px}
   table{width:100%;border-collapse:collapse;margin-top:16px;table-layout:auto}
-  th,td{border:1px solid var(--line);padding:10px;text-align:left;font-size:14px;word-break:break-word;vertical-align:top}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;font-size:14px;word-break:break-word;vertical-align:top}
   thead th{background:#f7f7f7}
-  .svgwrap{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .svgwrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:8px}
   #svg svg{max-width:100%;height:auto;display:block}
-  @media (max-width:700px){ .row{grid-template-columns:1fr} }
+  @media (max-width:760px){ .row{grid-template-columns:1fr} }
 </style>
 </head><body>
 <div class="box">
-  <h2 id="titulo">Carta natal instantánea</h2>
+  <h2 id="titulo">Carta natal occidental</h2>
   <div id="alert" class="alert"></div>
 
   <div class="row">
@@ -119,7 +117,7 @@ WIDGET_HTML = r"""<!doctype html>
     </div>
   </div>
 
-  <!-- este bloque lo vamos a poder ocultar con ?sidereal=off -->
+  <!-- Bloque Sideral: oculta por defecto; si quieres verlo, agrega ?sidereal=on en la URL -->
   <div class="row" id="row-sidereal">
     <div>
       <label>Zodiaco</label>
@@ -151,127 +149,124 @@ WIDGET_HTML = r"""<!doctype html>
 
 <script>
 (function(){
-  // ——— Parámetros desde la URL del iframe ———
-  const params   = new URLSearchParams(location.search);
-  const LANG     = params.get('lang')     || 'ES';
-  const THEME    = params.get('theme')    || 'classic';   // classic | light | dark | dark-high-contrast
-  const GEOUSER  = params.get('geouser')  || 'mofeto';
-  const TITLE    = params.get('title')    || 'Carta natal occidental';
-  const HIDE_SID = (params.get('sidereal') === 'off');    // ?sidereal=off para ocultar el bloque
+  // ===== Parámetros por URL del iframe =====
+  const q = new URLSearchParams(location.search);
+  const LANG    = q.get('lang')   || 'ES';
+  const THEME   = q.get('theme')  || 'classic'; // classic | light | dark | dark-high-contrast
+  const GEOUSER = q.get('geouser')|| 'mofeto';
+  const TITLE   = q.get('title')  || 'Carta natal occidental';
+  const SHOW_SID= (q.get('sidereal') === 'on'); // por defecto NO se muestra
 
-  // Aplica título y visibilidad del bloque sideral
   document.getElementById('titulo').textContent = decodeURIComponent(TITLE);
-  if (HIDE_SID) { const r = document.getElementById('row-sidereal'); if(r) r.style.display='none'; }
+  if(!SHOW_SID){ const r=document.getElementById('row-sidereal'); if(r) r.style.display='none'; }
 
-  // ——— Utilidades ———
+  // ===== Helpers UI =====
   const $ = id => document.getElementById(id);
-  const $alert = $('alert'), $out = $('resultado'), $svg = $('svg'), $tabs = $('tablas'), $btn=$('btn-gen');
+  const $alert=$('alert'), $out=$('resultado'), $svg=$('svg'), $tabs=$('tablas'), $btn=$('btn-gen');
+  const showAlert = t => { $alert.style.display='block'; $alert.textContent=t; };
+  const hideAlert = ()=>{ $alert.style.display='none'; $alert.textContent=''; };
 
-  function showAlert(t){ $alert.style.display='block'; $alert.textContent=t; }
-  function hideAlert(){ $alert.style.display='none'; $alert.textContent=''; }
-
-  function splitDate(d){ const [y,m,day]=(d||'').split('-').map(n=>parseInt(n,10)); return {year:y,month:m,day}; }
-  function splitTime(t){ const [h,mi]=(t||'00:00').split(':').map(n=>parseInt(n,10)); return {hour:h,minute:mi}; }
-  const ISO2={"colombia":"CO","argentina":"AR","chile":"CL","peru":"PE","ecuador":"EC","venezuela":"VE","uruguay":"UY","paraguay":"PY","bolivia":"BO","mexico":"MX","méxico":"MX","españa":"ES","espana":"ES","spain":"ES","portugal":"PT","francia":"FR","france":"FR","italia":"IT","italy":"IT","alemania":"DE","germany":"DE","reino unido":"GB","uk":"GB","inglaterra":"GB","united kingdom":"GB","estados unidos":"US","eeuu":"US","usa":"US","united states":"US","brasil":"BR","brazil":"BR","canadá":"CA","canada":"CA"};
+  // ===== Utils =====
   const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const ISO2 = {"colombia":"CO","argentina":"AR","chile":"CL","peru":"PE","ecuador":"EC","venezuela":"VE","uruguay":"UY","paraguay":"PY","bolivia":"BO","mexico":"MX","méxico":"MX","españa":"ES","espana":"ES","spain":"ES","portugal":"PT","francia":"FR","france":"FR","italia":"IT","italy":"IT","alemania":"DE","germany":"DE","reino unido":"GB","uk":"GB","inglaterra":"GB","united kingdom":"GB","estados unidos":"US","eeuu":"US","usa":"US","united states":"US","brasil":"BR","brazil":"BR","canadá":"CA","canada":"CA"};
+  const splitDate = d => { const [y,m,day]=(d||'').split('-').map(n=>parseInt(n,10)); return {year:y,month:m,day}; };
+  const splitTime = t => { const [h,mi]=(t||'00:00').split(':').map(n=>parseInt(n,10)); return {hour:h,minute:mi}; };
 
   async function call(path, payload, expectSVG=false){
-    const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!r.ok){ const txt=await r.text().catch(()=> ""); throw new Error(`HTTP ${r.status}: ${txt}`); }
     const ct=r.headers.get('content-type')||'';
     if(expectSVG){
       const t=await r.text();
       if(t.trim().startsWith('{')){ try{ const j=JSON.parse(t); return j.svg||j.chart||''; }catch{} }
       return t;
-    } else if(ct.includes('application/json')) {
-      return r.json();
-    } else {
-      return r.text();
-    }
+    } else if(ct.includes('application/json')) return r.json();
+    else return r.text();
   }
 
+  // ===== Tablas =====
   function tableHTML(head, rows){
     const thead = "<thead><tr>"+head.map(h=>`<th>${h}</th>`).join("")+"</tr></thead>";
     const tbody = "<tbody>"+rows.map(r=>"<tr>"+r.map(c=>`<td>${c??""}</td>`).join("")+"</tr>").join("")+"</tbody>";
     return `<table>${thead}${tbody}</table>`;
   }
-
-  // ——— Lectura “robusta” de datos devueltos por la API ———
-  function pickPoints(data){
-    if(Array.isArray(data)) return data;
-    if(data?.planets && Array.isArray(data.planets)) return data.planets;
-    if(data?.planets && typeof data.planets==='object') return Object.values(data.planets);
-    if(data?.points) return data.points;
-    if(data?.celestial_points) return data.celestial_points;
-    return [];
-  }
-  function pickHouses(data){
-    if(data?.houses && Array.isArray(data.houses)) return data.houses;
-    if(data?.houses && typeof data.houses==='object') return Object.values(data.houses);
-    if(data?.house_cusps) return data.house_cusps;
-    return [];
-  }
   function signFromLon(lon){ const i=Math.floor((((lon%360)+360)%360)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
   function degStr(lon){ const d=((lon%360)+360)%360; const g=Math.floor(d%30); const m=Math.floor((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
 
-  // —— Helpers para ASPECTOS: nombres y orbe desde diferentes formatos
-  const label = (x)=> typeof x==='string' ? x : (x?.name||x?.point||x?.body||x?.id||x?.symbol||"");
-  const p1 = (a)=> a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a["1"]||"";
-  const p2 = (a)=> a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a["2"]||"";
-  const orb= (a)=> a.orb ?? a.orb_deg ?? a.delta ?? a.distance ?? a.error ?? "";
+  // nombres robustos para aspectos (acepta mil formatos)
+  const label = x => typeof x==='string' ? x : (x?.name||x?.point||x?.body||x?.id||x?.symbol||"");
+  const p1 = a => a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a['1']||"";
+  const p2 = a => a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a['2']||"";
+  const orb= a => a.orb ?? a.orb_deg ?? a.delta ?? a.distance ?? a.error ?? "";
 
   async function generar(){
     try{
       hideAlert(); $out.style.display='none'; $svg.innerHTML=""; $tabs.innerHTML=""; $btn.disabled=true; $btn.textContent="Calculando…";
 
-      const name = $('inp-name').value.trim()||"Consulta";
-      const city = $('inp-city').value.trim();
-      const country = $('inp-country').value.trim();
-      const {year,month,day} = splitDate($('inp-date').value);
-      const {hour,minute}    = splitTime($('inp-time').value);
-      const house  = $('inp-house').value||'P';
-      const zodiac = HIDE_SID ? 'Tropic' : ($('inp-zodiac').value||'Tropic');
-      const ayan   = HIDE_SID ? ''        : ($('inp-ayanamsha').value||'');
+      const name=$('inp-name').value.trim()||"Consulta";
+      const city=$('inp-city').value.trim();
+      const country=$('inp-country').value.trim();
+      const {year,month,day}=splitDate($('inp-date').value);
+      const {hour,minute}=splitTime($('inp-time').value);
+      const house=$('inp-house').value||'P';
+      const zodiac= SHOW_SID ? ($('inp-zodiac').value||'Tropic') : 'Tropic';
+      const ayan  = SHOW_SID ? ($('inp-ayanamsha').value||'') : '';
 
       if(!year||!month||!day){ showAlert('Falta la fecha.'); return; }
       if(!city||!country){ showAlert('Escribe ciudad y país.'); return; }
-
       const code = ISO2[norm(country)] || null;
 
-      const subject = { year,month,day,hour,minute, city, name,
-                        zodiac_type:zodiac, house_system:house,
-                        geonames_username:GEOUSER };
-      if(code) subject.nation = code;
-      if(zodiac==='Sidereal' && ayan) subject.sidereal_mode = ayan;
+      const subject={year,month,day,hour,minute,city,name,zodiac_type:zodiac,house_system:house,geonames_username:GEOUSER};
+      if(code) subject.nation=code;
+      if(zodiac==='Sidereal' && ayan) subject.sidereal_mode=ayan;
+
+      // —— Puntos activos (para que el backend calcule bien aspectos)
+      const active_points=["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
 
       // 1) SVG
-      const svg = await call('/api/v4/birth-chart', { subject, language: LANG, theme: THEME }, true);
+      const svg = await call('/api/v4/birth-chart',{ subject, language:LANG, theme:THEME, active_points },true);
       if(!svg || !svg.includes('<svg')) throw new Error('El servidor no devolvió el SVG.');
-      $svg.innerHTML = svg;
+      $svg.innerHTML=svg;
 
       // 2) DATOS
-      const data = await call('/api/v4/natal-aspects-data', { subject, language: LANG }, false);
+      const data = await call('/api/v4/natal-aspects-data',{ subject, language:LANG, active_points },false);
 
-      // —— TABLA: Planetas / Puntos
-      const pts = pickPoints(data).map(p=>{
+      // PLANETAS / PUNTOS
+      const ptsRaw = (function pickPoints(d){
+        if(Array.isArray(d)) return d;
+        if(d?.planets && Array.isArray(d.planets)) return d.planets;
+        if(d?.planets && typeof d.planets==='object') return Object.values(d.planets);
+        if(d?.points) return d.points;
+        if(d?.celestial_points) return d.celestial_points;
+        return [];
+      })(data);
+
+      const pts = ptsRaw.map(p=>{
         const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos ?? 0;
         const house = p.house ?? p.house_number ?? "";
         const name = p.name || p.point || p.id || "";
         return [name, signFromLon(lon), degStr(lon), house];
       });
 
-      // Orden bonito: Sol, Luna, Mercurio...
-      const order = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
+      // ORDEN bonito
+      const order=["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
       pts.sort((a,b)=> (order.indexOf(a[0])==-1?99:order.indexOf(a[0])) - (order.indexOf(b[0])==-1?99:order.indexOf(b[0])) );
 
-      // —— TABLA: Casas
-      const hs = pickHouses(data).map((h,i)=>{
+      // CASAS
+      const hsRaw = (function pickHouses(d){
+        if(d?.houses && Array.isArray(d.houses)) return d.houses;
+        if(d?.houses && typeof d.houses==='object') return Object.values(d.houses);
+        if(d?.house_cusps) return d.house_cusps;
+        return [];
+      })(data);
+
+      const hs = hsRaw.map((h,i)=>{
         const lon = h.longitude ?? h.lon ?? h.longitude_deg ?? (h.ecliptic && h.ecliptic.lon) ?? h.abs_pos ?? 0;
         const num = h.number ?? h.house ?? (i+1);
         return [num, signFromLon(lon), degStr(lon)];
       });
 
-      // —— TABLA: Aspectos (robusta)
+      // ASPECTOS (super tolerante con el formato)
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
       const rowsA = aspects.map(a=>[
         a.type || a.aspect || a.kind || "",
@@ -295,10 +290,12 @@ WIDGET_HTML = r"""<!doctype html>
     }
   }
 
-  document.getElementById('btn-gen').addEventListener('click', (ev)=>{ ev.preventDefault(); generar(); });
+  document.getElementById('btn-gen').addEventListener('click', e=>{ e.preventDefault(); generar(); });
 })();
 </script>
 </body></html>
+"""
+
 """
 
 """
