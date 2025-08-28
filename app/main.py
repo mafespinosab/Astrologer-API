@@ -75,6 +75,9 @@ WIDGET_HTML = r'''<!doctype html>
   details{margin-top:10px;font-size:12px;border:1px solid var(--line);padding:10px;border-radius:12px;background:#fafafa}
   code,pre{white-space:pre-wrap}
   @media (max-width:780px){ .row{grid-template-columns:1fr} }
+
+#diag { display: none !important; }
+
 </style>
 </head><body>
 <div class="box">
