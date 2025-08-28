@@ -72,6 +72,8 @@ WIDGET_HTML = r'''<!doctype html>
   th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;font-size:14px;word-break:break-word;vertical-align:top}
   .svgwrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:10px;background:#fff}
   #svg svg{max-width:100%;height:auto;display:block}
+  details{margin-top:10px;font-size:12px}
+  code,pre{white-space:pre-wrap}
   @media (max-width:780px){ .row{grid-template-columns:1fr} }
 </style>
 </head><body>
@@ -120,25 +122,6 @@ WIDGET_HTML = r'''<!doctype html>
     </div>
   </div>
 
-  <!-- Sideral oculto (sólo si añades ?sidereal=on) -->
-  <div class="row" id="row-sidereal" style="display:none">
-    <div>
-      <label>Zodiaco</label>
-      <select id="inp-zodiac">
-        <option value="Tropic" selected>Tropical</option>
-        <option value="Sidereal">Sideral</option>
-      </select>
-    </div>
-    <div>
-      <label>Ayanamsha (si usas Sideral)</label>
-      <select id="inp-ayanamsha">
-        <option value="">—</option>
-        <option value="FAGAN_BRADLEY">Fagan/Bradley</option>
-        <option value="LAHIRI">Lahiri</option>
-      </select>
-    </div>
-  </div>
-
   <div class="mt">
     <button id="btn-gen">Generar carta</button>
   </div>
@@ -146,28 +129,31 @@ WIDGET_HTML = r'''<!doctype html>
   <div id="resultado" class="ok" style="display:none">
     <div id="svg" class="svgwrap"></div>
     <div id="tablas"></div>
+    <details id="diag" style="display:none">
+      <summary>Diagnóstico</summary>
+      <div id="diag-content"></div>
+    </details>
   </div>
 </div>
 
 <script>
 (function(){
-  // ===== Parámetros por URL =====
   const q       = new URLSearchParams(location.search);
   const LANG    = q.get('lang')    || 'ES';
   const THEME   = q.get('theme')   || 'light';
   const GEOUSER = q.get('geouser') || 'mofeto';
   const TITLE   = q.get('title')   || 'Tu carta natal';
-  const SHOW_SID= (q.get('sidereal') === 'on');
+  const APIBASE = (q.get('api') || '') || '/api/v4'; // puedes pasar ?api=https://TUAPP.onrender.com/api/v4
   document.getElementById('titulo').textContent = decodeURIComponent(TITLE||'');
-  if(SHOW_SID){ document.getElementById('row-sidereal').style.display='grid'; }
 
-  // ===== Helpers =====
   const $ = id => document.getElementById(id);
   const $alert=$('alert'), $out=$('resultado'), $svg=$('svg'), $tabs=$('tablas'), $btn=$('btn-gen');
+  const $diag=$('diag'), $diagC=$('diag-content');
   const showAlert = t => { $alert.style.display='block'; $alert.textContent=t; };
   const hideAlert = ()=>{ $alert.style.display='none'; $alert.textContent=''; };
+  const logDiag = (label,obj)=>{ $diag.style.display='block'; $diagC.innerHTML += `<p><b>${label}</b></p><pre>${escapeHtml(JSON.stringify(obj,null,2))}</pre>`; };
+  const escapeHtml = s => String(s).replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
 
-  // ===== Utils =====
   const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const ISO2 = {"colombia":"CO","argentina":"AR","chile":"CL","peru":"PE","ecuador":"EC","venezuela":"VE","uruguay":"UY","paraguay":"PY","bolivia":"BO","mexico":"MX","méxico":"MX","españa":"ES","espana":"ES","spain":"ES","portugal":"PT","francia":"FR","france":"FR","italia":"IT","italy":"IT","alemania":"DE","germany":"DE","reino unido":"GB","uk":"GB","inglaterra":"GB","united kingdom":"GB","estados unidos":"US","eeuu":"US","usa":"US","united states":"US","brasil":"BR","brazil":"BR","canadá":"CA","canada":"CA"};
   const splitDate = d => { const [y,m,day]=(d||'').split('-').map(n=>parseInt(n,10)); return {year:y,month:m,day}; };
@@ -180,13 +166,55 @@ WIDGET_HTML = r'''<!doctype html>
     const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!r.ok){ const txt=await r.text().catch(()=> ""); throw new Error(`HTTP ${r.status}: ${txt}`); }
     const ct=r.headers.get('content-type')||'';
-    if(expectSVG){
-      const t=await r.text();
-      if(t.trim().startsWith('{')){ try{ const j=JSON.parse(t); return j.svg||j.chart||''; }catch{} }
-      return t;
-    } else if(ct.includes('application/json')) return r.json();
-    else return r.text();
+    if(expectSVG){ const t=await r.text(); if(t.trim().startsWith('{')){ try{ const j=JSON.parse(t); return j.svg||j.chart||''; }catch{} } return t; }
+    if(ct.includes('application/json')) return r.json(); else return r.text();
   }
+
+  // ========= FALLBACKS AUTOMÁTICOS ANTE 500 =========
+  async function callWithFallbacks(endpoint, basePayload, expectSVG=false){
+    const variants = [];
+
+    // v0: tal cual
+    variants.push(p=>p);
+
+    // v1: sin Mean_South_Node
+    variants.push(p=>{
+      const c=clone(p); if(Array.isArray(c.active_points)) c.active_points=c.active_points.filter(x=>x!=="Mean_South_Node"); return c;
+    });
+
+    // v2: sin Chiron / Lilith
+    variants.push(p=>{
+      const c=clone(p); if(Array.isArray(c.active_points)) c.active_points=c.active_points.filter(x=>!["Chiron","Mean_Lilith"].includes(x)); return c;
+    });
+
+    // v3: sin active_points (que use los defaults del servidor)
+    variants.push(p=>{ const c=clone(p); delete c.active_points; return c; });
+
+    // v4: sin house_system (a veces rompe)
+    variants.push(p=>{ const c=clone(p); if(c.subject){ const s=clone(c.subject); delete s.house_system; c.subject=s; } return c; });
+
+    // v5: sin geonames (si el servidor hace su propia geocodificación)
+    variants.push(p=>{ const c=clone(p); if(c.subject){ const s=clone(c.subject); delete s.geonames_username; c.subject=s; } return c; });
+
+    let lastErr=null;
+    for(const v of variants){
+      const payload = v(clone(basePayload));
+      try{
+        const res = await call(endpoint, payload, expectSVG);
+        if(typeof res === 'string' && !expectSVG && res.trim().startsWith('<!doctype')) throw new Error('Respuesta HTML inesperada.');
+        if(typeof res === 'object' && res && (res.status==='KO' || res.error)) throw new Error(JSON.stringify(res));
+        if (lastErr) logDiag('Fallback que funcionó:', {endpoint, payload});
+        return res;
+      }catch(e){
+        lastErr = e;
+        logDiag('Intento fallido', {endpoint, payload, error: String(e)});
+        // Si no es 500 ni 422, salir rápido (p.ej. 403)
+        if(!String(e).includes('HTTP 500') && !String(e).includes('HTTP 422')) throw e;
+      }
+    }
+    throw lastErr || new Error('No se pudo recuperar tras varios intentos.');
+  }
+  const clone = obj => JSON.parse(JSON.stringify(obj));
 
   // ===== Signos / grados
   function signFromLon(lon){ const i=Math.floor(clamp360(lon)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
@@ -206,7 +234,7 @@ WIDGET_HTML = r'''<!doctype html>
       semisextil:"semisextile", semi_sextil:"semisextile", semisextile:"semisextile",
       quintil:"quintile", biquintil:"biquintile",
       novil:"novile", binovil:"binovile",
-      septil:"septile", biseptil:"biseptile", triseptil:"triseptile",
+      septil:"septile", biseptile:"biseptile", triseptile:"triseptile",
       undecil:"undecile"
     };
     return map[k] || k;
@@ -225,11 +253,9 @@ WIDGET_HTML = r'''<!doctype html>
     septile:"Septil", biseptile:"Biseptil", triseptile:"Triseptil", undecile:"Undécil"
   };
 
-  // ===== Lista aceptada por la API (EXCLUYE True_Node)
+  // ===== Lista aceptada por la API (excluye True_Node)
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
-  // backends a veces devuelven índices; mapeo 0/1-based y ángulos
   const NUM2CAN = {"0":"Sun","17":"Ascendant","18":"Medium_Coeli","19":"Descendant","20":"Imum_Coeli"};
-
   const POINT_ES = {
     "Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno",
     "Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón",
@@ -239,7 +265,6 @@ WIDGET_HTML = r'''<!doctype html>
     "Chiron":"Quirón","Mean_Lilith":"Lilith (media)"
   };
 
-  // ===== Lector robusto de longitudes
   function firstFinite(...vals){
     for(const v of vals){
       const n = (typeof v==="object" && v && "decimal" in v) ? v.decimal : v;
@@ -255,7 +280,6 @@ WIDGET_HTML = r'''<!doctype html>
     );
   }
 
-  // ===== Construcción de mapas (alias → canónico) y longitudes; usa casas para ASC/MC/DSC/IC
   function buildPointMaps(points, houses){
     const aliasToCanon = {};
     const lonByCanon   = {};
@@ -279,7 +303,7 @@ WIDGET_HTML = r'''<!doctype html>
       rowsCanon.push([canon, lon, p.house ?? p.house_number ?? ""]);
     });
 
-    // Fallback de ángulos desde casas (si no vienen como puntos)
+    // Cúspides → ángulos
     const getHouseLon = (arr, n) => {
       if(!arr || !arr.length) return null;
       const h = arr.find(hh => (hh.number ?? hh.house) == n) || arr[n-1] || null;
@@ -291,10 +315,8 @@ WIDGET_HTML = r'''<!doctype html>
     if(Number.isFinite(lonDesc)) lonByCanon["Descendant"] = lonDesc;
     if(Number.isFinite(lonIc  )) lonByCanon["Imum_Coeli"] = lonIc;
 
-    // alias numéricos más comunes
     Object.keys(NUM2CAN).forEach(k => aliasToCanon[k]=NUM2CAN[k]);
 
-    // tabla ES (oculta True_Node desde el origen)
     const rowsES = rowsCanon
       .filter(([canon]) => canon !== "True_Node")
       .map(([canon,lon,house])=>[canon, signFromLon(Number(lon||0)), degStr(Number(lon||0)), house])
@@ -307,20 +329,20 @@ WIDGET_HTML = r'''<!doctype html>
     if(x==null) return "";
     const s = String(x).trim();
     const k = s.toLowerCase();
-    if(NUM2CAN[s]) return NUM2CAN[s]; // índices especiales y 0-based
+    if(NUM2CAN[s]) return NUM2CAN[s];
     if(/^\d+$/.test(s)){
       const n = parseInt(s,10);
-      if(n>=0 && n < ORDER.length) return ORDER[n];     // 0-based
-      if(n>=1 && n <= ORDER.length) return ORDER[n-1];  // 1-based
+      if(n>=0 && n < ORDER.length) return ORDER[n];
+      if(n>=1 && n <= ORDER.length) return ORDER[n-1];
     }
     return maps.aliasToCanon[k] || k;
   }
   const toES = canon => POINT_ES[canon] || canon.replace(/_/g,' ');
 
-  // ================== GENERAR ==================
   async function generar(){
     try{
       hideAlert(); $out.style.display='none'; $svg.innerHTML=""; $tabs.innerHTML=""; $btn.disabled=true; $btn.textContent="Calculando…";
+      $diag.style.display='none'; $diagC.innerHTML='';
 
       const name=$('inp-name').value.trim()||"Consulta";
       const city=$('inp-city').value.trim();
@@ -328,8 +350,7 @@ WIDGET_HTML = r'''<!doctype html>
       const {year,month,day}=splitDate($('inp-date').value);
       const {hour,minute}=splitTime($('inp-time').value);
       const house=$('inp-house').value||'P';
-      const zodiac= (document.getElementById('row-sidereal').style.display==='grid') ? ($('inp-zodiac').value||'Tropic') : 'Tropic';
-      const ayan  = (zodiac==='Sidereal') ? ($('inp-ayanamsha').value||'') : '';
+      const zodiac='Tropic';
 
       if(!year||!month||!day){ showAlert('Falta la fecha.'); return; }
       if(!city||!country){ showAlert('Escribe ciudad y país.'); return; }
@@ -337,18 +358,21 @@ WIDGET_HTML = r'''<!doctype html>
 
       const subject={year,month,day,hour,minute,city,name,zodiac_type:zodiac,house_system:house,geonames_username:GEOUSER};
       if(code) subject.nation=code;
-      if(zodiac==='Sidereal' && ayan) subject.sidereal_mode=ayan;
 
-      // Lista exacta aceptada por la API (sin True_Node)
+      // puntos que pedimos (sin True_Node)
       const active_points=[...ORDER];
 
-      // 1) SVG
-      const svg = await call('/api/v4/birth-chart',{ subject, language:LANG, theme:THEME, style:THEME, chart_theme:THEME, active_points },true);
+      // ====== 1) SVG con fallbacks
+      const svgPayload = { subject, language:LANG, theme:THEME, style:THEME, chart_theme:THEME, active_points };
+      logDiag('Petición SVG (inicial)', {endpoint: APIBASE+'/birth-chart', payload: svgPayload});
+      const svg = await callWithFallbacks(APIBASE+'/birth-chart', svgPayload, true);
       if(!svg || !svg.includes('<svg')) throw new Error('El servidor no devolvió el SVG.');
       $svg.innerHTML=svg;
 
-      // 2) Datos
-      const data = await call('/api/v4/natal-aspects-data',{ subject, language:LANG, active_points },false);
+      // ====== 2) DATOS con fallbacks
+      const dataPayload = { subject, language:LANG, active_points };
+      logDiag('Petición DATOS (inicial)', {endpoint: APIBASE+'/natal-aspects-data', payload: dataPayload});
+      const data = await callWithFallbacks(APIBASE+'/natal-aspects-data', dataPayload, false);
 
       // --- Preparar puntos y casas
       const ptsRaw = Array.isArray(data) ? data :
@@ -383,12 +407,12 @@ WIDGET_HTML = r'''<!doctype html>
         html += `<h3>Casas (cúspides)</h3><table>${head}${body}</table>`;
       }
 
-      // Aspectos → normalizar claves, filtrar True_Node y CALCULAR ORBE SIEMPRE
+      // Aspectos → normalizar claves, filtrar True_Node y calcular ORBE SIEMPRE
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
       if(aspects.length){
         const rowsA = aspects.map(a=>{
           const tRaw = (a.type || a.aspect || a.kind || "").toString().trim();
-          const key  = aspectKey(tRaw);                      // ES/EN → clave canónica
+          const key  = aspectKey(tRaw);
           const label= ASPECTO_ES[key] || (tRaw? tRaw.charAt(0).toUpperCase()+tRaw.slice(1):"");
           const target = ASPECT_ANGLE[key];
 
@@ -397,18 +421,16 @@ WIDGET_HTML = r'''<!doctype html>
 
           const canon1 = toCanon(cand1, maps);
           const canon2 = toCanon(cand2, maps);
-          if(canon1==="True_Node" || canon2==="True_Node") return null; // excluir
+          if(canon1==="True_Node" || canon2==="True_Node") return null;
 
           const disp1  = toES(canon1);
           const disp2  = toES(canon2);
 
-          // separación real: uso la del backend si viene; si no, la calculo con longitudes
           const l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2];
           const sepField = Number(a.separation ?? a.sep ?? a.sep_deg ?? a.angle ?? a.angle_deg ?? a.aspect_angle);
           const sep = Number.isFinite(sepField) ? Math.abs(sepField)
                     : (Number.isFinite(l1) && Number.isFinite(l2) ? minSepDeg(l1,l2) : NaN);
 
-          // ORBE = |sep − target| (ignoramos cualquier "orb"/"delta" del backend)
           const orb = (Number.isFinite(sep) && Number.isFinite(target))
             ? fmtDegMin(Math.abs(sep - target))
             : "—";
@@ -436,6 +458,7 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
+
 
 
 
