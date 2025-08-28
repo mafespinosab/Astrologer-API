@@ -191,18 +191,18 @@ WIDGET_HTML = r'''<!doctype html>
   function signFromLon(lon){ const i=Math.floor((((lon%360)+360)%360)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
   function degStr(lon){ const d=((lon%360)+360)%360; const g=Math.floor(d%30); const m=Math.round((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
 
-  // ——— Catálogo canónico y nombres ES
-  const BASE_ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
-  // puntos extra que causan 17/18 y compañía:
-  const EXTRA_ORDER = ["Vertex","Part_of_Fortune","Descendant","Imum_Coeli","True_Node"];
-  const ORDER = BASE_ORDER.concat(EXTRA_ORDER); // pedimos todo
+  // ——— Catálogo aceptado por la API (NO meter extras aquí)
+  const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","True_Node","Mean_South_Node","Chiron","Mean_Lilith"];
+  // Algunos backends devuelven índices 17..20 en aspectos para los ángulos:
+  const NUM2CAN = {"17":"Ascendant","18":"Medium_Coeli","19":"Descendant","20":"Imum_Coeli"};
 
   const POINT_ES = {
     "Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno",
-    "Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón","Ascendant":"Ascendente","Descendant":"Descendente",
+    "Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón",
+    "Ascendant":"Ascendente","Descendant":"Descendente",
     "Medium_Coeli":"Medio Cielo","Imum_Coeli":"Fondo del Cielo",
     "Mean_Node":"Nodo Norte (medio)","True_Node":"Nodo Norte (verdadero)","Mean_South_Node":"Nodo Sur (medio)",
-    "Chiron":"Quirón","Mean_Lilith":"Lilith (media)","Vertex":"Vértice (Vertex)","Part_of_Fortune":"Parte de la Fortuna"
+    "Chiron":"Quirón","Mean_Lilith":"Lilith (media)"
   };
 
   // —— Aspectos (ES) y ángulos teóricos para orbe
@@ -231,34 +231,25 @@ WIDGET_HTML = r'''<!doctype html>
 
     points.forEach((p,enumIdx)=>{
       const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos ?? null;
-      const raw = p.name || p.point || p.id || p.code || ORDER[enumIdx] || `P${enumIdx+1}`;
+      // estabiliza con el orden oficial cuando exista
+      const canon = ORDER[enumIdx] || String(p.name||p.point||p.id||`P${enumIdx+1}`);
 
-      // preferimos el del backend, pero estabilizamos con ORDER si existe esa posición
-      let canon = ORDER[enumIdx] || String(raw);
-
-      // guarda longitudes
       if(lon!=null) lonByCanon[canon] = Number(lon);
 
-      // registra alias (incluye índices que suelen aparecer en aspectos)
-      [
-        raw, p.id, p.point, p.code, p.symbol, p.name, p.body, p.planet,
-        String(enumIdx), String(enumIdx+1),
-        String(p.index), String(p.idx), String(p.point_index), String(p.body_index), String(p.global_index), String(p.no)
-      ]
-      .filter(v=>v!==undefined && v!==null && v!=="")
-      .forEach(a=> aliasToCanon[String(a).toLowerCase()] = canon);
+      // muchos alias → canónico
+      [p.name,p.point,p.id,p.code,p.symbol,p.body,p.planet,
+       String(enumIdx),String(enumIdx+1),
+       String(p.index),String(p.idx),String(p.point_index),String(p.body_index),String(p.global_index),String(p.no)
+      ].filter(Boolean).forEach(a=> aliasToCanon[String(a).toLowerCase()] = canon);
 
       rowsCanon.push([canon, lon, p.house ?? p.house_number ?? ""]);
     });
 
-    // Fallback duro: si el backend usa códigos “17/18” para Vertex/Parte Fortuna
-    aliasToCanon["17"] = aliasToCanon["17"] || "Vertex";
-    aliasToCanon["18"] = aliasToCanon["18"] || "Part_of_Fortune";
+    // Fallback para enumeraciones que vienen como números 17..20 (ángulos)
+    Object.keys(NUM2CAN).forEach(k=>{ if(!aliasToCanon[k]) aliasToCanon[k]=NUM2CAN[k]; });
 
-    // tabla en ES
     const rowsES = rowsCanon
       .map(([canon,lon,house])=>[canon, signFromLon(Number(lon||0)), degStr(Number(lon||0)), house])
-      .sort((a,b)=> (ORDER.indexOf(a[0])==-1?99:ORDER.indexOf(a[0])) - (ORDER.indexOf(b[0])==-1?99:ORDER.indexOf(b[0])) )
       .map(([canon,sign,deg,house])=>[(POINT_ES[canon]||canon.replace(/_/g,' ')),sign,deg,house]);
 
     return { aliasToCanon, lonByCanon, rowsES };
@@ -268,10 +259,10 @@ WIDGET_HTML = r'''<!doctype html>
     if(x==null) return "";
     const s = String(x).trim();
     const k = s.toLowerCase();
-    // numérico mapeado por JSON
-    if(/^\d+$/.test(s) && maps.aliasToCanon[s]) return maps.aliasToCanon[s];
-    // si es número y cabe en nuestro catálogo extendido
     if(/^\d+$/.test(s)){
+      // primero: números especiales 17..20
+      if(NUM2CAN[s]) return NUM2CAN[s];
+      // luego: posición en ORDER 1..N
       const n = parseInt(s,10);
       if(ORDER[n-1]) return ORDER[n-1];
     }
@@ -301,7 +292,7 @@ WIDGET_HTML = r'''<!doctype html>
       if(code) subject.nation=code;
       if(zodiac==='Sidereal' && ayan) subject.sidereal_mode=ayan;
 
-      // >>> Pedimos puntos extra para que el backend nos devuelva longitudes de Vertex/Parte Fortuna
+      // >>> IMPORTANTE: lista EXACTA que acepta la API (sin Vertex ni Parte Fortuna)
       const active_points=[...ORDER];
 
       // 1) SVG
@@ -343,7 +334,7 @@ WIDGET_HTML = r'''<!doctype html>
         html += `<h3>Casas (cúspides)</h3><table>${head}${body}</table>`;
       }
 
-      // Aspectos (resolver índices 17/18, y calcular ORBE)
+      // Aspectos → resolver 17/18/19/20 y calcular ORBE
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
       if(aspects.length){
         const rowsA = aspects.map(a=>{
@@ -351,7 +342,6 @@ WIDGET_HTML = r'''<!doctype html>
           const tKey = tRaw.toLowerCase().replace(/\s+/g,"_").replace(/-/g,"_");
           const tEs  = ASPECT_ES[tKey] || (tRaw ? tRaw.charAt(0).toUpperCase()+tRaw.slice(1) : "");
 
-          // candidatos (muuuchas variantes del backend)
           const cand1 = a.point_1??a.body_1??a.point1??a.a??a.p1??a.obj1??a.object1??a.planet1??a.c1??a.first??a["1"]??a.from??a.name1??a.p1_name??a.index1??a.idx1??a.i1??a.body1_index??a.point1_index??a.global_index1??a.no1;
           const cand2 = a.point_2??a.body_2??a.point2??a.b??a.p2??a.obj2??a.object2??a.planet2??a.c2??a.second??a["2"]??a.to??a.name2??a.p2_name??a.index2??a.idx2??a.i2??a.body2_index??a.point2_index??a.global_index2??a.no2;
 
@@ -360,7 +350,7 @@ WIDGET_HTML = r'''<!doctype html>
           const disp1  = toES(canon1);
           const disp2  = toES(canon2);
 
-          // ORBE (usa el backend si lo trae; si no, lo calculo)
+          // ORBE: si no viene, lo calculo seguro
           let orb = a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
           if(orb === "" || orb == null){
             const l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2], target = ASPECT_DEG[tKey];
@@ -396,6 +386,7 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
+
 
 
 
