@@ -45,7 +45,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WIDGET_HTML = r"""<!doctype html>
+WIDGET_HTML = r'''<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -58,8 +58,7 @@ WIDGET_HTML = r"""<!doctype html>
   label{display:block;font-size:14px;margin:12px 0 6px}
   input,select,button{width:100%;padding:12px;border:1px solid var(--line);background:#fff;color:#000;border-radius:10px}
   button{cursor:pointer;font-weight:800}
-  /* MÁS ESPACIO ENTRE IZQ/DCHA */
-  .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px}
+  .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px} /* más aire */
   .mt{margin-top:18px}
   .alert{border:1px solid var(--line);background:#fff;color:#000;border-radius:12px;padding:12px;margin:12px 0;display:none;white-space:pre-wrap}
   .ok{border:1px solid var(--line);padding:26px;border-radius:12px;margin-top:18px}
@@ -67,7 +66,7 @@ WIDGET_HTML = r"""<!doctype html>
   table{width:100%;border-collapse:collapse;margin-top:16px;table-layout:auto}
   th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;font-size:14px;word-break:break-word;vertical-align:top}
   thead th{background:#f7f7f7}
-  .svgwrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:10px;background:#fff} /* fondo claro */
+  .svgwrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:10px;background:#fff}
   #svg svg{max-width:100%;height:auto;display:block}
   @media (max-width:780px){ .row{grid-template-columns:1fr} }
 </style>
@@ -138,7 +137,7 @@ WIDGET_HTML = r"""<!doctype html>
 
   <div class="mt">
     <button id="btn-gen">Generar carta</button>
-    <!-- Quitamos el Tip -->
+    <!-- Tip eliminado -->
   </div>
 
   <div id="resultado" class="ok" style="display:none">
@@ -150,14 +149,14 @@ WIDGET_HTML = r"""<!doctype html>
 <script>
 (function(){
   // ===== Parámetros por URL =====
-  const q = new URLSearchParams(location.search);
+  const q       = new URLSearchParams(location.search);
   const LANG    = q.get('lang')    || 'ES';
-  const THEME   = q.get('theme')   || 'classic'; // classic | light | dark | dark-high-contrast
+  const THEME   = q.get('theme')   || 'light';   // por defecto claro
   const GEOUSER = q.get('geouser') || 'mofeto';
   const TITLE   = q.get('title')   || 'Tu carta natal';
   const SHOW_SID= (q.get('sidereal') === 'on');
 
-  document.getElementById('titulo').textContent = decodeURIComponent(TITLE);
+  document.getElementById('titulo').textContent = decodeURIComponent(TITLE || '');
   if(SHOW_SID){ document.getElementById('row-sidereal').style.display='grid'; }
 
   // ===== Helpers UI =====
@@ -193,38 +192,41 @@ WIDGET_HTML = r"""<!doctype html>
   function signFromLon(lon){ const i=Math.floor((((lon%360)+360)%360)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
   function degStr(lon){ const d=((lon%360)+360)%360; const g=Math.floor(d%30); const m=Math.floor((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
 
-  // NOMBRE seguro (string u objeto)
+  // Nombres de puntos y mapa para resolver índices/códigos
   const label = x => {
     if(x==null) return "";
     if(typeof x === "string" || typeof x === "number") return String(x);
-    return x.name || x.point || x.body || x.id || x.symbol || x.title || x.label || "";
+    return x.name || x.point || x.body || x.id || x.code || x.symbol || x.title || x.label || "";
   };
-
-  // ===== Resolver Aspectos: tomamos campos raros y mapeamos índices a nombres de puntos
   function buildPointMaps(points){
-    const byKey = {};
+    const byKey = {}, names = new Set();
     points.forEach((p,idx)=>{
       const display = p.name || p.point || p.id || p.code || p.symbol || `P${idx+1}`;
       const keys = [
         p.name,p.point,p.id,p.code,p.symbol,p.key,p.body,p.planet,p.obj,
         String(idx), String(p.index||"")
       ].filter(Boolean).map(v=>String(v).toLowerCase());
-      keys.forEach(k=>{ if(k) byKey[k]=display; });
+      keys.forEach(k=>{ byKey[k]=display; });
+      if(p.name) names.add(String(p.name));
+      if(p.id)   names.add(String(p.id));
+      if(p.code) names.add(String(p.code));
+      if(p.symbol) names.add(String(p.symbol));
     });
-    return byKey;
+    // sinónimos útiles
+    byKey['asc']='Ascendant'; byKey['as']='Ascendant'; byKey['ascendant']='Ascendant';
+    byKey['mc']='Medium_Coeli'; byKey['medium_coeli']='Medium_Coeli'; byKey['midheaven']='Medium_Coeli';
+    byKey['nn']='Mean_Node'; byKey['north node']='Mean_Node'; byKey['node']='Mean_Node';
+    byKey['sn']='Mean_South_Node'; byKey['south node']='Mean_South_Node';
+    return {byKey, names};
   }
-  function guessName(raw, map){
+  function guessName(raw, maps){
     if(raw==null) return "";
     if(typeof raw==="object") return label(raw);
     const k = String(raw).toLowerCase();
-    return map[k] || String(raw);
+    return maps.byKey[k] || String(raw);
   }
-  function pickBody1(a){
-    return a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a["1"]||a.from||a.name1||a.p1_name||a.object1_name||a.body1||a.pointOne||a.left||a.idx1||a.index1||"";
-  }
-  function pickBody2(a){
-    return a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a["2"]||a.to||a.name2||a.p2_name||a.object2_name||a.body2||a.pointTwo||a.right||a.idx2||a.index2||"";
-  }
+  function pickBody1(a){ return a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a["1"]||a.from||a.name1||a.p1_name||a.object1_name||a.body1||a.pointOne||a.left||a.idx1||a.index1||a.i1||""; }
+  function pickBody2(a){ return a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a["2"]||a.to||a.name2||a.p2_name||a.object2_name||a.body2||a.pointTwo||a.right||a.idx2||a.index2||a.i2||""; }
   const pickOrb = a => a.orb ?? a.orb_deg ?? a.delta ?? a.distance ?? a.error ?? a.difference ?? a.exactness ?? "";
 
   async function generar(){
@@ -250,10 +252,9 @@ WIDGET_HTML = r"""<!doctype html>
       if(code) subject.nation=code;
       if(zodiac==='Sidereal' && ayan) subject.sidereal_mode=ayan;
 
-      // Puntos activos explícitos = aspectos más completos
       const active_points=["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
 
-      // 1) SVG → forzamos tema claro: pasamos theme + alias
+      // 1) SVG (tema claro por defecto)
       const svg = await call('/api/v4/birth-chart',{ subject, language:LANG, theme:THEME, style:THEME, chart_theme:THEME, active_points },true);
       if(!svg || !svg.includes('<svg')) throw new Error('El servidor no devolvió el SVG.');
       $svg.innerHTML=svg;
@@ -261,7 +262,7 @@ WIDGET_HTML = r"""<!doctype html>
       // 2) Datos
       const data = await call('/api/v4/natal-aspects-data',{ subject, language:LANG, active_points },false);
 
-      // PLANETAS / PUNTOS
+      // PUNTOS
       const ptsRaw = (function pickPoints(d){
         if(Array.isArray(d)) return d;
         if(d?.planets && Array.isArray(d.planets)) return d.planets;
@@ -270,8 +271,7 @@ WIDGET_HTML = r"""<!doctype html>
         if(d?.celestial_points) return d.celestial_points;
         return [];
       })(data);
-
-      const pointMap = buildPointMaps(ptsRaw);
+      const maps = buildPointMaps(ptsRaw);
 
       const pts = ptsRaw.map((p,idx)=>{
         const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos ?? 0;
@@ -279,7 +279,6 @@ WIDGET_HTML = r"""<!doctype html>
         const name = p.name || p.point || p.id || p.code || `P${idx+1}`;
         return [name, signFromLon(lon), degStr(lon), house];
       });
-
       const order=["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
       pts.sort((a,b)=> (order.indexOf(a[0])==-1?99:order.indexOf(a[0])) - (order.indexOf(b[0])==-1?99:order.indexOf(b[0])) );
 
@@ -296,24 +295,31 @@ WIDGET_HTML = r"""<!doctype html>
         return [num, signFromLon(lon), degStr(lon)];
       });
 
-      // ASPECTOS → resolver nombres aunque vengan como índices/códigos
+      // ASPECTOS: intenta muchísimos formatos (índices, claves, etc.)
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
       let rowsA = aspects.map(a=>{
         const t  = a.type || a.aspect || a.kind || "";
-        const b1 = guessName(pickBody1(a), pointMap);
-        const b2 = guessName(pickBody2(a), pointMap);
+        let b1   = guessName(pickBody1(a), maps);
+        let b2   = guessName(pickBody2(a), maps);
+        // si vinieron como índices numéricos en otras claves:
+        if((!b1 || b1===String(pickBody1(a))) && ('index1' in a || 'idx1' in a || 'i1' in a)){
+          b1 = guessName(a.index1 ?? a.idx1 ?? a.i1, maps);
+        }
+        if((!b2 || b2===String(pickBody2(a))) && ('index2' in a || 'idx2' in a || 'i2' in a)){
+          b2 = guessName(a.index2 ?? a.idx2 ?? a.i2, maps);
+        }
         const o  = pickOrb(a);
         return [t,b1,b2,o];
       });
 
-      // Si siguen vacíos, intenta nombres buscando en todas las claves
+      // Si aún vienen vacíos, barrido de claves que contengan nombres
       if(rowsA.length && rowsA.every(r=>!r[1] && !r[2])){
         rowsA = aspects.map(a=>{
           const t = a.type || a.aspect || a.kind || "";
           let n1="", n2="";
           for(const k in a){
-            if(/(name.?1|1.?name|from|p1[_-]?name|point.?1|body.?1)/i.test(k)){ n1 = guessName(a[k], pointMap); }
-            if(/(name.?2|2.?name|to|p2[_-]?name|point.?2|body.?2)/i.test(k)){ n2 = guessName(a[k], pointMap); }
+            const v=a[k];
+            if(typeof v==='string' && maps.byKey[v.toLowerCase()]){ if(!n1) n1=maps.byKey[v.toLowerCase()]; else if(!n2) n2=maps.byKey[v.toLowerCase()]; }
           }
           const o = pickOrb(a);
           return [t,n1,n2,o];
@@ -326,7 +332,7 @@ WIDGET_HTML = r"""<!doctype html>
       if(rowsA.length && rowsA.some(r=>r[1]||r[2]||r[3])) {
         html += "<h3>Aspectos</h3>"+tableHTML(["Aspecto","Cuerpo 1","Cuerpo 2","Orbe"], rowsA);
       }
-      document.getElementById('tablas').innerHTML = html || "<p style='color:#555'>Recibí datos, pero no había tablas para mostrar.</p>";
+      document.getElementById('tablas').innerHTML = html || "<p style="+'"'+"color:#555"+'"'+">Recibí datos, pero no había tablas para mostrar.</p>";
       $out.style.display='block';
 
     }catch(e){
@@ -340,15 +346,8 @@ WIDGET_HTML = r"""<!doctype html>
 })();
 </script>
 </body></html>
-"""
+'''
 
-"""
-
-"""
-
-"""
-
-"""
 
 @app.get("/widget", response_class=HTMLResponse)
 def widget():
