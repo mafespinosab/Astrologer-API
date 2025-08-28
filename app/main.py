@@ -192,10 +192,43 @@ WIDGET_HTML = r'''<!doctype html>
   function signFromLon(lon){ const i=Math.floor(clamp360(lon)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
   function degStr(lon){ const d=clamp360(lon); const g=Math.floor(d%30); const m=Math.round((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
 
-  // ——— Lista aceptada por la API (sin True_Node)
+  // ===== Aspectos: normalización ES/EN + ángulos
+  function sinAcentos(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+  function aspectKey(raw){
+    const k = sinAcentos(String(raw||"")).toLowerCase().replace(/[\s-]+/g,"_");
+    const map = {
+      conjuncion:"conjunction", oposicion:"opposition", opp:"opposition",
+      cuadratura:"square", quartile:"square",
+      trigono:"trine", sextil:"sextile",
+      quincuncio:"quincunx", inconjuncto:"quincunx", inconjunct:"quincunx",
+      semicuadratura:"semisquare", semi_cuadratura:"semisquare", semi_square:"semisquare", semisquare:"semisquare",
+      sesquicuadratura:"sesquiquadrate", sesqui_cuadratura:"sesquiquadrate", sesqui_quadrate:"sesquiquadrate",
+      semisextil:"semisextile", semi_sextil:"semisextile", semisextile:"semisextile",
+      quintil:"quintile", biquintil:"biquintile",
+      novil:"novile", binovil:"binovile",
+      septil:"septile", biseptil:"biseptile", triseptil:"triseptile",
+      undecil:"undecile"
+    };
+    return map[k] || k;
+  }
+  const ASPECT_ANGLE = {
+    conjunction:0, opposition:180, square:90, trine:120, sextile:60,
+    quincunx:150, inconjunct:150,
+    semisextile:30, semisquare:45, sesquiquadrate:135,
+    quintile:72, biquintile:144, novile:40, binovile:80,
+    septile:51.4286, biseptile:102.8571, triseptile:154.2857, undecile:32.7273
+  };
+  const ASPECTO_ES = {
+    conjunction:"Conjunción", opposition:"Oposición", square:"Cuadratura", trine:"Trígono", sextile:"Sextil",
+    quincunx:"Quincuncio", semisextile:"Semisextil", semisquare:"Semicuadratura", sesquiquadrate:"Sesquicuadratura",
+    quintile:"Quintil", biquintile:"Biquintil", novile:"Novil", binovile:"Binovil",
+    septile:"Septil", biseptile:"Biseptil", triseptile:"Triseptil", undecile:"Undécil"
+  };
+
+  // ===== Lista aceptada por la API (EXCLUYE True_Node como pediste)
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
-  // algunos backends usan índices numéricos para ángulos:
-  const NUM2CAN = {"17":"Ascendant","18":"Medium_Coeli","19":"Descendant","20":"Imum_Coeli","0":"Sun"}; // 0-based también
+  // backends a veces ponen índices numéricos; mapeo 0/1-based y ángulos
+  const NUM2CAN = {"0":"Sun","17":"Ascendant","18":"Medium_Coeli","19":"Descendant","20":"Imum_Coeli"};
 
   const POINT_ES = {
     "Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno",
@@ -204,24 +237,6 @@ WIDGET_HTML = r'''<!doctype html>
     "Medium_Coeli":"Medio Cielo","Imum_Coeli":"Fondo del Cielo",
     "Mean_Node":"Nodo Norte (medio)","Mean_South_Node":"Nodo Sur (medio)",
     "Chiron":"Quirón","Mean_Lilith":"Lilith (media)"
-  };
-
-  // —— Aspectos (ES) y ángulos teóricos para orbe
-  const ASPECT_ES = {
-    "conjunction":"Conjunción","opp":"Oposición","opposition":"Oposición",
-    "square":"Cuadratura","quartile":"Cuadratura","trine":"Trígono","sextile":"Sextil",
-    "quincunx":"Quincuncio","inconjunct":"Quincuncio",
-    "semi-square":"Semicuadratura","semisquare":"Semicuadratura","semi_square":"Semicuadratura",
-    "sesquiquadrate":"Sesquicuadratura","sesqui-quadrate":"Sesquicuadratura","sesqui_quadrate":"Sesquicuadratura",
-    "semi-sextile":"Semisextil","semisextile":"Semisextil","semi_sextile":"Semisextil",
-    "quintile":"Quintil","biquintile":"Biquintil","novile":"Novil","binovile":"Binovil",
-    "septile":"Septil","biseptile":"Biseptil","triseptile":"Triseptil","undecile":"Undécil"
-  };
-  const ASPECT_DEG = {
-    "conjunction":0,"opposition":180,"opp":180,"square":90,"quartile":90,"trine":120,"sextile":60,
-    "quincunx":150,"inconjunct":150,"semisextile":30,"semi-sextile":30,"semi_sextile":30,
-    "semisquare":45,"semi-square":45,"semi_square":45,"sesquiquadrate":135,"sesqui-quadrate":135,"sesqui_quadrate":135,
-    "quintile":72,"biquintile":144,"novile":40,"binovile":80,"septile":51.4286,"biseptile":102.8571,"triseptile":154.2857,"undecile":32.7273
   };
 
   // ===== Lector robusto de longitudes
@@ -240,7 +255,7 @@ WIDGET_HTML = r'''<!doctype html>
     );
   }
 
-  // ===== Construcción de mapas (alias → canónico) y longitudes
+  // ===== Construcción de mapas (alias → canónico) y longitudes; usa casas para ASC/MC/DSC/IC
   function buildPointMaps(points, houses){
     const aliasToCanon = {};
     const lonByCanon   = {};
@@ -249,15 +264,12 @@ WIDGET_HTML = r'''<!doctype html>
     points.forEach((p,enumIdx)=>{
       let raw = p.name || p.point || p.id || p.code || `P${enumIdx+1}`;
       raw = String(raw);
-      // nombre canónico si coincide con ORDER; si no, deja raw
       let canon = ORDER.includes(raw) ? raw : raw;
-      // si el backend no manda nombre, intenta por posición 0-based / 1-based
       if(!ORDER.includes(canon) && ORDER[enumIdx]) canon = ORDER[enumIdx];
 
       const lon = getLon(p);
       if(lon!=null) lonByCanon[canon] = lon;
 
-      // registra alias, incluidos índices 0/1-based y campos típicos
       [
         raw, p.id, p.point, p.code, p.symbol, p.name, p.body, p.planet,
         String(enumIdx), String(enumIdx+1),
@@ -267,24 +279,22 @@ WIDGET_HTML = r'''<!doctype html>
       rowsCanon.push([canon, lon, p.house ?? p.house_number ?? ""]);
     });
 
-    // Fallback de ángulos desde casas (por si no vienen como puntos)
-    if(houses && houses.length){
-      const getCusp = (n) => {
-        const h = houses.find(hh => (hh.number ?? hh.house) == n) || houses[n-1] || null;
-        const lon = h ? getLon(h) : null;
-        return lon==null ? null : lon;
-      };
-      const lonAsc = getCusp(1), lonMc = getCusp(10), lonDesc = getCusp(7), lonIc = getCusp(4);
-      if(lonAsc!=null) lonByCanon["Ascendant"] = lonAsc;
-      if(lonMc !=null) lonByCanon["Medium_Coeli"] = lonMc;
-      if(lonDesc!=null) lonByCanon["Descendant"] = lonDesc;
-      if(lonIc !=null) lonByCanon["Imum_Coeli"] = lonIc;
-    }
+    // Fallback de ángulos desde casas (si no vienen como puntos)
+    const getHouseLon = (arr, n) => {
+      if(!arr || !arr.length) return null;
+      const h = arr.find(hh => (hh.number ?? hh.house) == n) || arr[n-1] || null;
+      return h ? getLon(h) : null;
+    };
+    const lonAsc = getHouseLon(houses,1), lonMc = getHouseLon(houses,10), lonDesc = getHouseLon(houses,7), lonIc = getHouseLon(houses,4);
+    if(Number.isFinite(lonAsc)) lonByCanon["Ascendant"] = lonAsc;
+    if(Number.isFinite(lonMc )) lonByCanon["Medium_Coeli"] = lonMc;
+    if(Number.isFinite(lonDesc)) lonByCanon["Descendant"] = lonDesc;
+    if(Number.isFinite(lonIc  )) lonByCanon["Imum_Coeli"] = lonIc;
 
-    // Mapeo numérico habitual que aparece en aspectos
+    // alias numéricos más comunes
     Object.keys(NUM2CAN).forEach(k => aliasToCanon[k]=NUM2CAN[k]);
 
-    // tabla en ES (excluye True_Node)
+    // tabla ES (oculta True_Node desde el origen)
     const rowsES = rowsCanon
       .filter(([canon]) => canon !== "True_Node")
       .map(([canon,lon,house])=>[canon, signFromLon(Number(lon||0)), degStr(Number(lon||0)), house])
@@ -297,14 +307,11 @@ WIDGET_HTML = r'''<!doctype html>
     if(x==null) return "";
     const s = String(x).trim();
     const k = s.toLowerCase();
-    // números especiales y 0-based
-    if(NUM2CAN[s]) return NUM2CAN[s];
+    if(NUM2CAN[s]) return NUM2CAN[s]; // índices especiales y 0-based
     if(/^\d+$/.test(s)){
       const n = parseInt(s,10);
-      // 0-based
-      if(n>=0 && n < ORDER.length) return ORDER[n];
-      // 1-based
-      if(n>=1 && n <= ORDER.length) return ORDER[n-1];
+      if(n>=0 && n < ORDER.length) return ORDER[n];     // 0-based
+      if(n>=1 && n <= ORDER.length) return ORDER[n-1];  // 1-based
     }
     return maps.aliasToCanon[k] || k;
   }
@@ -332,7 +339,7 @@ WIDGET_HTML = r'''<!doctype html>
       if(code) subject.nation=code;
       if(zodiac==='Sidereal' && ayan) subject.sidereal_mode=ayan;
 
-      // Lista exacta que acepta la API (sin True_Node)
+      // Lista exacta aceptada por la API (sin True_Node)
       const active_points=[...ORDER];
 
       // 1) SVG
@@ -340,7 +347,7 @@ WIDGET_HTML = r'''<!doctype html>
       if(!svg || !svg.includes('<svg')) throw new Error('El servidor no devolvió el SVG.');
       $svg.innerHTML=svg;
 
-      // 2) Datos crudos
+      // 2) Datos
       const data = await call('/api/v4/natal-aspects-data',{ subject, language:LANG, active_points },false);
 
       // --- Preparar puntos y casas
@@ -376,40 +383,43 @@ WIDGET_HTML = r'''<!doctype html>
         html += `<h3>Casas (cúspides)</h3><table>${head}${body}</table>`;
       }
 
-      // Aspectos → filtrar True_Node y calcular orbe
+      // Aspectos → normalizar claves, filtrar True_Node y CALCULAR ORBE
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
       if(aspects.length){
         const rowsA = aspects.map(a=>{
           const tRaw = (a.type || a.aspect || a.kind || "").toString().trim();
-          const tKey = tRaw.toLowerCase().replace(/\s+/g,"_").replace(/-/g,"_");
-          const tEs  = ASPECT_ES[tKey] || (tRaw ? tRaw.charAt(0).toUpperCase()+tRaw.slice(1) : "");
+          const key  = aspectKey(tRaw);                      // ES/EN → clave canónica
+          const label= ASPECTO_ES[key] || (tRaw? tRaw.charAt(0).toUpperCase()+tRaw.slice(1):"");
+          const target = ASPECT_ANGLE[key];
 
           const cand1 = a.point_1??a.body_1??a.point1??a.a??a.p1??a.obj1??a.object1??a.planet1??a.c1??a.first??a["1"]??a.from??a.name1??a.p1_name??a.index1??a.idx1??a.i1??a.body1_index??a.point1_index??a.global_index1??a.no1;
           const cand2 = a.point_2??a.body_2??a.point2??a.b??a.p2??a.obj2??a.object2??a.planet2??a.c2??a.second??a["2"]??a.to??a.name2??a.p2_name??a.index2??a.idx2??a.i2??a.body2_index??a.point2_index??a.global_index2??a.no2;
 
           const canon1 = toCanon(cand1, maps);
           const canon2 = toCanon(cand2, maps);
-
-          // excluir totalmente True_Node
-          if(canon1==="True_Node" || canon2==="True_Node") return null;
+          if(canon1==="True_Node" || canon2==="True_Node") return null; // excluir
 
           const disp1  = toES(canon1);
           const disp2  = toES(canon2);
 
-          // ORBE (preferir backend; si no, calcular)
+          // separación: usa la del backend si existe; si no, la calculo con longitudes
+          const l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2];
+          const sepField = Number(a.separation ?? a.sep ?? a.sep_deg ?? a.angle ?? a.angle_deg ?? a.aspect_angle);
+          const sep = Number.isFinite(sepField)
+            ? Math.abs(sepField)
+            : (Number.isFinite(l1) && Number.isFinite(l2) ? minSepDeg(l1,l2) : NaN);
+
+          // orbe: si no vino, lo calculo (|sep - target|)
           let orb = a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
-          if(orb === "" || orb == null){
-            const l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2], target = ASPECT_DEG[tKey];
-            if(Number.isFinite(l1) && Number.isFinite(l2) && Number.isFinite(target)){
-              const sep  = minSepDeg(l1,l2);
-              const odeg = Math.abs(sep - target);
-              orb = fmtDegMin(odeg);
-            } else { orb = "—"; }
+          if((orb === "" || orb == null) && Number.isFinite(target) && Number.isFinite(sep)){
+            orb = fmtDegMin(Math.abs(sep - target));
           } else {
-            const n = Number(orb);
-            if(Number.isFinite(n)) orb = fmtDegMin(Math.abs(n));
+            const on = Number(orb);
+            if(Number.isFinite(on)) orb = fmtDegMin(Math.abs(on));
+            if(!orb) orb = "—";
           }
-          return [tEs || "—", disp1 || "—", disp2 || "—", orb || "—"];
+
+          return [label || "—", disp1 || "—", disp2 || "—", orb || "—"];
         }).filter(Boolean);
 
         const head = "<thead><tr><th>Aspecto</th><th>Cuerpo 1</th><th>Cuerpo 2</th><th>Orbe</th></tr></thead>";
@@ -432,6 +442,7 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
+
 
 
 
