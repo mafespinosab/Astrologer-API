@@ -62,11 +62,11 @@ WIDGET_HTML = r'''<!doctype html>
     background:#fff;color:#000;border-radius:12px;line-height:1.2
   }
   button{cursor:pointer;font-weight:800}
-  /* MÁS ESPACIO y columnas idénticas */
+  /* más espacio y columnas iguales */
   .row{
     display:grid;
-    grid-template-columns:1fr 1fr;   /* mismas anchuras */
-    gap:36px;                        /* más aire */
+    grid-template-columns:1fr 1fr;
+    gap:36px;
     align-items:start;
   }
   .mt{margin-top:18px}
@@ -202,63 +202,59 @@ WIDGET_HTML = r'''<!doctype html>
     return `<table>${thead}${tbody}</table>`;
   }
   function signFromLon(lon){ const i=Math.floor((((lon%360)+360)%360)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
-  function degStr(lon){ const d=((lon%360)+360)%360; const g=Math.floor(d%30); const m=Math.floor((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
+  function degStr(lon){ const d=((lon%360)+360)%360; const g=Math.floor(d%30); const m=Math.round((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
 
-  // Nombres de puntos y mapa para resolver índices/códigos
+  // Orden canónico y mapas para índices → nombres
+  const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
+  const INDEX_MAP = ORDER.reduce((acc,name,i)=>{ acc[String(i+1)]=name; acc[String(i)]=name; return acc; },{});
+
+  // Traducciones de aspectos al español
+  const ASPECT_ES = {
+    "conjunction":"Conjunción",
+    "opp":"Oposición","opposition":"Oposición",
+    "square":"Cuadratura","quartile":"Cuadratura",
+    "trine":"Trígono",
+    "sextile":"Sextil",
+    "quincunx":"Quincuncio","inconjunct":"Quincuncio",
+    "semi-square":"Semicuadratura","semisquare":"Semicuadratura","semi_square":"Semicuadratura",
+    "sesquiquadrate":"Sesquicuadratura","sesqui-quadrate":"Sesquicuadratura","sesqui_quadrate":"Sesquicuadratura",
+    "semi-sextile":"Semisextil","semisextile":"Semisextil","semi_sextile":"Semisextil",
+    "quintile":"Quintil","biquintile":"Biquintil",
+    "novile":"Novil","binovile":"Binovil",
+    "septile":"Septil","biseptile":"Biseptil","triseptile":"Triseptil",
+    "undecile":"Undécil"
+  };
+  // Ángulo teórico de cada aspecto (para calcular orbe)
+  const ASPECT_DEG = {
+    "conjunction":0,
+    "opposition":180,"opp":180,
+    "square":90,"quartile":90,
+    "trine":120,
+    "sextile":60,
+    "quincunx":150,"inconjunct":150,
+    "semisextile":30,"semi-sextile":30,"semi_sextile":30,
+    "semisquare":45,"semi-square":45,"semi_square":45,
+    "sesquiquadrate":135,"sesqui-quadrate":135,"sesqui_quadrate":135,
+    "quintile":72,"biquintile":144,
+    "novile":40,"binovile":80,
+    "septile":51.4286,"biseptile":102.8571,"triseptile":154.2857,
+    "undecile":32.7273
+  };
+
+  // utilidades para orbe
+  function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
+  function fmtDegMin(x){
+    const d = Math.floor(x), m = Math.round((x - d)*60);
+    const dd = (m===60)? d+1 : d;
+    const mm = (m===60)? 0   : m;
+    return `${dd}°${String(mm).padStart(2,"0")}'`;
+  }
+
   const label = x => {
     if(x==null) return "";
     if(typeof x === "string" || typeof x === "number") return String(x);
     return x.name || x.point || x.body || x.id || x.code || x.symbol || x.title || x.label || "";
   };
-
-  // Orden “canónico” y mapa 1→nombre (para cuando vienen números 1,2,12,13…)
-  const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
-  const INDEX_MAP = ORDER.reduce((acc,name,i)=>{ acc[String(i+1)]=name; acc[String(i)]=name; return acc; },{}); // 1-based y 0-based
-
-// —— Traducciones de aspectos al español (robusto con variantes)
-const ASPECT_ES = {
-  "conjunction":"Conjunción",
-  "opp":"Oposición","opposition":"Oposición",
-  "square":"Cuadratura","quartile":"Cuadratura",
-  "trine":"Trígono",
-  "sextile":"Sextil",
-  "quincunx":"Quincuncio","inconjunct":"Quincuncio",
-  "semi-square":"Semicuadratura","semisquare":"Semicuadratura","semi_square":"Semicuadratura",
-  "sesquiquadrate":"Sesquicuadratura","sesqui-quadrate":"Sesquicuadratura","sesqui_quadrate":"Sesquicuadratura",
-  "semi-sextile":"Semisextil","semisextile":"Semisextil","semi_sextile":"Semisextil",
-  "quintile":"Quintil","biquintile":"Biquintil",
-  "novile":"Novil","binovile":"Binovil",
-  "septile":"Septil","biseptile":"Biseptil","triseptile":"Triseptil",
-  "undecile":"Undécil"
-};
-
-// —— Ángulo teórico de cada aspecto (para calcular el orbe)
-const ASPECT_DEG = {
-  "conjunction":0,
-  "opposition":180,"opp":180,
-  "square":90,"quartile":90,
-  "trine":120,
-  "sextile":60,
-  "quincunx":150,"inconjunct":150,
-  "semisextile":30,"semi-sextile":30,"semi_sextile":30,
-  "semisquare":45,"semi-square":45,"semi_square":45,
-  "sesquiquadrate":135,"sesqui-quadrate":135,"sesqui_quadrate":135,
-  "quintile":72,"biquintile":144,
-  "novile":40,"binovile":80,
-  "septile":51.4286,"biseptile":102.8571,"triseptile":154.2857,
-  "undecile":32.7273
-};
-
-// —— utilidades para orbe
-function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
-function fmtDegMin(x){
-  const d = Math.floor(x), m = Math.round((x - d)*60);
-  const mm = (m===60)? 0 : m;
-  const dd = (m===60)? d+1 : d;
-  return `${dd}°${String(mm).padStart(2,"0")}'`;
-}
-
-
 
   function buildPointMaps(points){
     const byKey = {};
@@ -270,7 +266,6 @@ function fmtDegMin(x){
       ].filter(Boolean).map(v=>String(v).toLowerCase());
       keys.forEach(k=>{ byKey[k]=display; });
     });
-    // sinónimos útiles
     byKey['asc']='Ascendant'; byKey['as']='Ascendant'; byKey['ascendant']='Ascendant';
     byKey['mc']='Medium_Coeli'; byKey['medium_coeli']='Medium_Coeli'; byKey['midheaven']='Medium_Coeli';
     byKey['nn']='Mean_Node'; byKey['north node']='Mean_Node'; byKey['node']='Mean_Node';
@@ -282,13 +277,11 @@ function fmtDegMin(x){
     if(typeof raw==="object") return label(raw);
     const rawS = String(raw).trim();
     const k = rawS.toLowerCase();
-    // Si viene número (1,2,12…) mapear por índice
     if(/^\d+$/.test(rawS) && (INDEX_MAP[rawS] || INDEX_MAP[String(parseInt(rawS,10))])){
       return INDEX_MAP[rawS] || INDEX_MAP[String(parseInt(rawS,10))];
     }
     return maps.byKey[k] || rawS;
   }
-
   function pickBody1(a){ return a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a["1"]||a.from||a.name1||a.p1_name||a.object1_name||a.body1||a.pointOne||a.left||a.idx1||a.index1||a.i1||""; }
   function pickBody2(a){ return a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a["2"]||a.to||a.name2||a.p2_name||a.object2_name||a.body2||a.pointTwo||a.right||a.idx2||a.index2||a.i2||""; }
   const pickOrb = a => a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
@@ -316,9 +309,9 @@ function fmtDegMin(x){
       if(code) subject.nation=code;
       if(zodiac==='Sidereal' && ayan) subject.sidereal_mode=ayan;
 
-      const active_points=[...ORDER]; // mismos nombres para coherencia
+      const active_points=[...ORDER];
 
-      // 1) SVG (tema claro por defecto)
+      // 1) SVG
       const svg = await call('/api/v4/birth-chart',{ subject, language:LANG, theme:THEME, style:THEME, chart_theme:THEME, active_points },true);
       if(!svg || !svg.includes('<svg')) throw new Error('El servidor no devolvió el SVG.');
       $svg.innerHTML=svg;
@@ -326,7 +319,7 @@ function fmtDegMin(x){
       // 2) Datos
       const data = await call('/api/v4/natal-aspects-data',{ subject, language:LANG, active_points },false);
 
-      // PUNTOS
+      // Puntos (para tablas y para calcular orbes)
       const ptsRaw = (function pickPoints(d){
         if(Array.isArray(d)) return d;
         if(d?.planets && Array.isArray(d.planets)) return d.planets;
@@ -343,11 +336,9 @@ function fmtDegMin(x){
         const name = p.name || p.point || p.id || p.code || ORDER[idx] || `P${idx+1}`;
         return [name, signFromLon(lon), degStr(lon), house];
       });
-
-      // orden bonito
       pts.sort((a,b)=> (ORDER.indexOf(a[0])==-1?99:ORDER.indexOf(a[0])) - (ORDER.indexOf(b[0])==-1?99:ORDER.indexOf(b[0])) );
 
-      // CASAS
+      // Casas
       const hsRaw = (function pickHouses(d){
         if(d?.houses && Array.isArray(d.houses)) return d.houses;
         if(d?.houses && typeof d.houses==='object') return Object.values(d.houses);
@@ -360,26 +351,56 @@ function fmtDegMin(x){
         return [num, signFromLon(lon), degStr(lon)];
       });
 
-      // ASPECTOS → resolver números 1..N y mil variantes de nombres
+      // Aspectos → español + orbe calculado si falta
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
-      let rowsA = aspects.map(a=>{
-        const t  = a.type || a.aspect || a.kind || "";
-        let b1   = guessName(pickBody1(a), maps);
-        let b2   = guessName(pickBody2(a), maps);
-        // si aún son números, mapear por índice
-        if(/^\d+$/.test(String(b1))) b1 = INDEX_MAP[String(b1)] || b1;
-        if(/^\d+$/.test(String(b2))) b2 = INDEX_MAP[String(b2)] || b2;
-        const o  = pickOrb(a);
-        return [t,b1,b2,o];
+      // mapa de longitudes por nombre para orbe
+      const lonMap = {};
+      ptsRaw.forEach((p,idx)=>{
+        const nm = (p.name || p.point || p.id || ORDER[idx] || `P${idx+1}`)+"";
+        const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos;
+        if(lon!=null) lonMap[nm.toLowerCase()] = Number(lon);
       });
 
+      let rowsA = aspects.map(a=>{
+        // tipo a español
+        const tRaw = (a.type || a.aspect || a.kind || "").toString().trim();
+        const tKey = tRaw.toLowerCase().replace(/\s+/g,"_").replace(/-/g,"_");
+        const tEs  = ASPECT_ES[tKey] || (tRaw ? tRaw.charAt(0).toUpperCase()+tRaw.slice(1) : "");
+
+        // nombres de cuerpos (resuelve índices)
+        let b1 = guessName(pickBody1(a), maps);
+        let b2 = guessName(pickBody2(a), maps);
+        if(/^\d+$/.test(String(b1))) b1 = INDEX_MAP[String(b1)] || maps.byKey[String(parseInt(b1,10)-1)] || b1;
+        if(/^\d+$/.test(String(b2))) b2 = INDEX_MAP[String(b2)] || maps.byKey[String(parseInt(b2,10)-1)] || b2;
+
+        // orbe
+        let orb = pickOrb(a);
+        if(orb === "" || orb == null){
+          const l1 = lonMap[(b1||"").toLowerCase()];
+          const l2 = lonMap[(b2||"").toLowerCase()];
+          const target = ASPECT_DEG[tKey];
+          if(l1!=null && l2!=null && target!=null){
+            const sep  = minSepDeg(l1,l2);
+            const odeg = Math.abs(sep - target);
+            orb = fmtDegMin(odeg);
+          } else {
+            orb = "—";
+          }
+        } else {
+          const n = Number(orb);
+          if(Number.isFinite(n)) orb = fmtDegMin(Math.abs(n));
+        }
+        return [tEs, b1 || "—", b2 || "—", orb || "—"];
+      });
+
+      // Render de tablas
       let html="";
       if(pts.length) html += "<h3>Planetas / Puntos</h3>"+tableHTML(["Cuerpo","Signo","Grado","Casa"], pts);
       if(hs.length)  html += "<h3>Casas (cúspides)</h3>"+tableHTML(["Casa","Signo","Grado"], hs);
       if(rowsA.length && rowsA.some(r=>r[1]||r[2]||r[3])) {
         html += "<h3>Aspectos</h3>"+tableHTML(["Aspecto","Cuerpo 1","Cuerpo 2","Orbe"], rowsA);
       }
-      document.getElementById('tablas').innerHTML = html || "<p style="+'"'+"color:#555"+'"'+">Recibí datos, pero no había tablas para mostrar.</p>";
+      document.getElementById('tablas').innerHTML = html || "<p style='color:#555'>Recibí datos, pero no había tablas para mostrar.</p>";
       $out.style.display='block';
 
     }catch(e){
@@ -394,6 +415,7 @@ function fmtDegMin(x){
 </script>
 </body></html>
 '''
+
 
 
 
