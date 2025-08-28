@@ -203,52 +203,65 @@ WIDGET_HTML = r'''<!doctype html>
   }
   function signFromLon(lon){ const i=Math.floor((((lon%360)+360)%360)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
   function degStr(lon){ const d=((lon%360)+360)%360; const g=Math.floor(d%30); const m=Math.round((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
+  function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
+  function fmtDegMin(x){ const d=Math.floor(x), m=Math.round((x-d)*60); const dd=(m===60)?d+1:d; const mm=(m===60)?0:m; return `${dd}°${String(mm).padStart(2,"0")}'`; }
 
-  // Orden canónico y mapas para índices → nombres
+  // ——— Puntos canónicos (EN) y sus traducciones ES
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
+  const POINT_ES = {
+    "Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno",
+    "Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón","Ascendant":"Ascendente","Medium_Coeli":"Medio Cielo",
+    "Mean_Node":"Nodo Norte (medio)","Mean_South_Node":"Nodo Sur (medio)","Chiron":"Quirón","Mean_Lilith":"Lilith (media)"
+  };
   const INDEX_MAP = ORDER.reduce((acc,name,i)=>{ acc[String(i+1)]=name; acc[String(i)]=name; return acc; },{});
+  // sinónimos EN/ES → canónico EN
+  const SYN = {
+    "sol":"Sun","sun":"Sun",
+    "luna":"Moon","moon":"Moon",
+    "mercurio":"Mercury","mercury":"Mercury",
+    "venus":"Venus",
+    "marte":"Mars","mars":"Mars",
+    "jupiter":"Jupiter","júpiter":"Jupiter","júpiter":"Jupiter",
+    "saturno":"Saturn","saturn":"Saturn",
+    "urano":"Uranus","uranus":"Uranus",
+    "neptuno":"Neptune","neptune":"Neptune",
+    "pluton":"Pluto","plutón":"Pluto","pluto":"Pluto",
+    "ascendente":"Ascendant","asc":"Ascendant","as":"Ascendant","ascendant":"Ascendant",
+    "mc":"Medium_Coeli","medio cielo":"Medium_Coeli","medium_coeli":"Medium_Coeli","midheaven":"Medium_Coeli",
+    "nodo norte":"Mean_Node","north node":"Mean_Node","nn":"Mean_Node","mean_node":"Mean_Node",
+    "nodo sur":"Mean_South_Node","south node":"Mean_South_Node","sn":"Mean_South_Node","mean_south_node":"Mean_South_Node",
+    "quiron":"Chiron","quirón":"Chiron","chiron":"Chiron",
+    "lilith":"Mean_Lilith","lilith (media)":"Mean_Lilith","mean_lilith":"Mean_Lilith"
+  };
+  function toCanonicalName(x){
+    if(x==null) return "";
+    const s = String(x).trim();
+    if(/^\d+$/.test(s)) return INDEX_MAP[s] || INDEX_MAP[String(parseInt(s,10))] || s;
+    const k = s.toLowerCase();
+    if(POINT_ES[s]) return s; // ya es canónico EN
+    return SYN[k] || s;
+  }
+  function toSpanishName(canonicalEN){
+    return POINT_ES[canonicalEN] || canonicalEN;
+  }
 
-  // Traducciones de aspectos al español
+  // ——— Aspectos en español + ángulos teóricos (para ORBE)
   const ASPECT_ES = {
-    "conjunction":"Conjunción",
-    "opp":"Oposición","opposition":"Oposición",
-    "square":"Cuadratura","quartile":"Cuadratura",
-    "trine":"Trígono",
-    "sextile":"Sextil",
+    "conjunction":"Conjunción","opp":"Oposición","opposition":"Oposición",
+    "square":"Cuadratura","quartile":"Cuadratura","trine":"Trígono","sextile":"Sextil",
     "quincunx":"Quincuncio","inconjunct":"Quincuncio",
     "semi-square":"Semicuadratura","semisquare":"Semicuadratura","semi_square":"Semicuadratura",
     "sesquiquadrate":"Sesquicuadratura","sesqui-quadrate":"Sesquicuadratura","sesqui_quadrate":"Sesquicuadratura",
     "semi-sextile":"Semisextil","semisextile":"Semisextil","semi_sextile":"Semisextil",
-    "quintile":"Quintil","biquintile":"Biquintil",
-    "novile":"Novil","binovile":"Binovil",
-    "septile":"Septil","biseptile":"Biseptil","triseptile":"Triseptil",
-    "undecile":"Undécil"
+    "quintile":"Quintil","biquintile":"Biquintil","novile":"Novil","binovile":"Binovil",
+    "septile":"Septil","biseptile":"Biseptil","triseptile":"Triseptil","undecile":"Undécil"
   };
-  // Ángulo teórico de cada aspecto (para calcular orbe)
   const ASPECT_DEG = {
-    "conjunction":0,
-    "opposition":180,"opp":180,
-    "square":90,"quartile":90,
-    "trine":120,
-    "sextile":60,
-    "quincunx":150,"inconjunct":150,
-    "semisextile":30,"semi-sextile":30,"semi_sextile":30,
-    "semisquare":45,"semi-square":45,"semi_square":45,
-    "sesquiquadrate":135,"sesqui-quadrate":135,"sesqui_quadrate":135,
-    "quintile":72,"biquintile":144,
-    "novile":40,"binovile":80,
-    "septile":51.4286,"biseptile":102.8571,"triseptile":154.2857,
-    "undecile":32.7273
+    "conjunction":0,"opposition":180,"opp":180,"square":90,"quartile":90,"trine":120,"sextile":60,
+    "quincunx":150,"inconjunct":150,"semisextile":30,"semi-sextile":30,"semi_sextile":30,
+    "semisquare":45,"semi-square":45,"semi_square":45,"sesquiquadrate":135,"sesqui-quadrate":135,"sesqui_quadrate":135,
+    "quintile":72,"biquintile":144,"novile":40,"binovile":80,"septile":51.4286,"biseptile":102.8571,"triseptile":154.2857,"undecile":32.7273
   };
-
-  // utilidades para orbe
-  function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
-  function fmtDegMin(x){
-    const d = Math.floor(x), m = Math.round((x - d)*60);
-    const dd = (m===60)? d+1 : d;
-    const mm = (m===60)? 0   : m;
-    return `${dd}°${String(mm).padStart(2,"0")}'`;
-  }
 
   const label = x => {
     if(x==null) return "";
@@ -257,31 +270,24 @@ WIDGET_HTML = r'''<!doctype html>
   };
 
   function buildPointMaps(points){
-    const byKey = {};
+    const lonByCanon = {}; // longitudes por nombre canónico EN
+    const rows = [];
     points.forEach((p,idx)=>{
-      const display = p.name || p.point || p.id || p.code || p.symbol || ORDER[idx] || `P${idx+1}`;
-      const keys = [
-        p.name,p.point,p.id,p.code,p.symbol,p.key,p.body,p.planet,p.obj,
-        String(idx), String(p.index||""), String(idx+1)
-      ].filter(Boolean).map(v=>String(v).toLowerCase());
-      keys.forEach(k=>{ byKey[k]=display; });
+      const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos ?? null;
+      const raw = p.name || p.point || p.id || ORDER[idx] || `P${idx+1}`;
+      const canon = toCanonicalName(raw);
+      const canonFinal = ORDER.includes(canon) ? canon : (ORDER[idx] || canon);
+      if(lon!=null) lonByCanon[canonFinal] = Number(lon);
+      const house = p.house ?? p.house_number ?? "";
+      rows.push([canonFinal, signFromLon(Number(lon||0)), degStr(Number(lon||0)), house]);
     });
-    byKey['asc']='Ascendant'; byKey['as']='Ascendant'; byKey['ascendant']='Ascendant';
-    byKey['mc']='Medium_Coeli'; byKey['medium_coeli']='Medium_Coeli'; byKey['midheaven']='Medium_Coeli';
-    byKey['nn']='Mean_Node'; byKey['north node']='Mean_Node'; byKey['node']='Mean_Node';
-    byKey['sn']='Mean_South_Node'; byKey['south node']='Mean_South_Node';
-    return {byKey};
+    // orden
+    rows.sort((a,b)=> (ORDER.indexOf(a[0])==-1?99:ORDER.indexOf(a[0])) - (ORDER.indexOf(b[0])==-1?99:ORDER.indexOf(b[0])) );
+    // traducir nombres a ES para mostrar
+    const rowsES = rows.map(([canon,sign,deg,house])=>[toSpanishName(canon),sign,deg,house]);
+    return {rowsES, lonByCanon};
   }
-  function guessName(raw, maps){
-    if(raw==null) return "";
-    if(typeof raw==="object") return label(raw);
-    const rawS = String(raw).trim();
-    const k = rawS.toLowerCase();
-    if(/^\d+$/.test(rawS) && (INDEX_MAP[rawS] || INDEX_MAP[String(parseInt(rawS,10))])){
-      return INDEX_MAP[rawS] || INDEX_MAP[String(parseInt(rawS,10))];
-    }
-    return maps.byKey[k] || rawS;
-  }
+
   function pickBody1(a){ return a.point_1||a.body_1||a.point1||a.a||a.A||a.p1||a.obj1||a.object1||a.planet1||a.c1||a.first||a.source||a["1"]||a.from||a.name1||a.p1_name||a.object1_name||a.body1||a.pointOne||a.left||a.idx1||a.index1||a.i1||""; }
   function pickBody2(a){ return a.point_2||a.body_2||a.point2||a.b||a.B||a.p2||a.obj2||a.object2||a.planet2||a.c2||a.second||a.target||a["2"]||a.to||a.name2||a.p2_name||a.object2_name||a.body2||a.pointTwo||a.right||a.idx2||a.index2||a.i2||""; }
   const pickOrb = a => a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness ?? "";
@@ -319,7 +325,7 @@ WIDGET_HTML = r'''<!doctype html>
       // 2) Datos
       const data = await call('/api/v4/natal-aspects-data',{ subject, language:LANG, active_points },false);
 
-      // Puntos (para tablas y para calcular orbes)
+      // Puntos: filas (ya en ES) + longitudes por nombre canónico
       const ptsRaw = (function pickPoints(d){
         if(Array.isArray(d)) return d;
         if(d?.planets && Array.isArray(d.planets)) return d.planets;
@@ -328,15 +334,7 @@ WIDGET_HTML = r'''<!doctype html>
         if(d?.celestial_points) return d.celestial_points;
         return [];
       })(data);
-      const maps = buildPointMaps(ptsRaw);
-
-      const pts = ptsRaw.map((p,idx)=>{
-        const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos ?? 0;
-        const house = p.house ?? p.house_number ?? "";
-        const name = p.name || p.point || p.id || p.code || ORDER[idx] || `P${idx+1}`;
-        return [name, signFromLon(lon), degStr(lon), house];
-      });
-      pts.sort((a,b)=> (ORDER.indexOf(a[0])==-1?99:ORDER.indexOf(a[0])) - (ORDER.indexOf(b[0])==-1?99:ORDER.indexOf(b[0])) );
+      const {rowsES:pts, lonByCanon} = buildPointMaps(ptsRaw);
 
       // Casas
       const hsRaw = (function pickHouses(d){
@@ -348,52 +346,42 @@ WIDGET_HTML = r'''<!doctype html>
       const hs = hsRaw.map((h,i)=>{
         const lon = h.longitude ?? h.lon ?? h.longitude_deg ?? (h.ecliptic && h.ecliptic.lon) ?? h.abs_pos ?? 0;
         const num = h.number ?? h.house ?? (i+1);
-        return [num, signFromLon(lon), degStr(lon)];
+        return [num, signFromLon(Number(lon||0)), degStr(Number(lon||0))];
       });
 
-      // Aspectos → español + orbe calculado si falta
+      // Aspectos → español + ORBE (si falta, lo calculo)
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
-      // mapa de longitudes por nombre para orbe
-      const lonMap = {};
-      ptsRaw.forEach((p,idx)=>{
-        const nm = (p.name || p.point || p.id || ORDER[idx] || `P${idx+1}`)+"";
-        const lon = p.longitude ?? p.lon ?? p.longitude_deg ?? (p.ecliptic && p.ecliptic.lon) ?? p.abs_pos;
-        if(lon!=null) lonMap[nm.toLowerCase()] = Number(lon);
-      });
-
       let rowsA = aspects.map(a=>{
-        // tipo a español
         const tRaw = (a.type || a.aspect || a.kind || "").toString().trim();
         const tKey = tRaw.toLowerCase().replace(/\s+/g,"_").replace(/-/g,"_");
         const tEs  = ASPECT_ES[tKey] || (tRaw ? tRaw.charAt(0).toUpperCase()+tRaw.slice(1) : "");
 
-        // nombres de cuerpos (resuelve índices)
-        let b1 = guessName(pickBody1(a), maps);
-        let b2 = guessName(pickBody2(a), maps);
-        if(/^\d+$/.test(String(b1))) b1 = INDEX_MAP[String(b1)] || maps.byKey[String(parseInt(b1,10)-1)] || b1;
-        if(/^\d+$/.test(String(b2))) b2 = INDEX_MAP[String(b2)] || maps.byKey[String(parseInt(b2,10)-1)] || b2;
+        // nombres canónicos EN -> luego traduzco a ES para mostrar
+        const canon1 = toCanonicalName(label(pickBody1(a)));
+        const canon2 = toCanonicalName(label(pickBody2(a)));
+        const disp1  = toSpanishName(ORDER.includes(canon1)?canon1:(INDEX_MAP[canon1]||canon1));
+        const disp2  = toSpanishName(ORDER.includes(canon2)?canon2:(INDEX_MAP[canon2]||canon2));
 
         // orbe
         let orb = pickOrb(a);
         if(orb === "" || orb == null){
-          const l1 = lonMap[(b1||"").toLowerCase()];
-          const l2 = lonMap[(b2||"").toLowerCase()];
+          const c1 = ORDER.includes(canon1) ? canon1 : SYN[canon1?.toLowerCase?.()] || INDEX_MAP[canon1] || canon1;
+          const c2 = ORDER.includes(canon2) ? canon2 : SYN[canon2?.toLowerCase?.()] || INDEX_MAP[canon2] || canon2;
+          const l1 = lonByCanon[c1]; const l2 = lonByCanon[c2];
           const target = ASPECT_DEG[tKey];
           if(l1!=null && l2!=null && target!=null){
             const sep  = minSepDeg(l1,l2);
             const odeg = Math.abs(sep - target);
             orb = fmtDegMin(odeg);
-          } else {
-            orb = "—";
-          }
+          } else { orb = "—"; }
         } else {
           const n = Number(orb);
           if(Number.isFinite(n)) orb = fmtDegMin(Math.abs(n));
         }
-        return [tEs, b1 || "—", b2 || "—", orb || "—"];
+        return [tEs, disp1 || "—", disp2 || "—", orb || "—"];
       });
 
-      // Render de tablas
+      // Render
       let html="";
       if(pts.length) html += "<h3>Planetas / Puntos</h3>"+tableHTML(["Cuerpo","Signo","Grado","Casa"], pts);
       if(hs.length)  html += "<h3>Casas (cúspides)</h3>"+tableHTML(["Casa","Signo","Grado"], hs);
@@ -415,6 +403,7 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
+
 
 
 
