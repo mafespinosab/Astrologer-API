@@ -165,6 +165,23 @@ WIDGET_HTML = r'''<!doctype html>
   function minSepDeg(a,b){ return Math.abs(((a - b + 540) % 360) - 180); } // 0..180
   function fmtDegMin(x){ const d=Math.floor(x), m=Math.round((x-d)*60); const dd=(m===60)?d+1:d; const mm=(m===60)?0:m; return `${dd}°${String(mm).padStart(2,"0")}'`; }
 
+  function parseAngleAny(v){
+    if(v==null) return null;
+    if(typeof v==='number' && Number.isFinite(v)) return v;
+    const s=String(v).trim();
+    if(!s) return null;
+    // 12°34'56"  |  12°34'  |  12.5°  |  12.5  |  12'30"
+    const dms = s.match(/(-?\d+(?:\.\d+)?)\s*°?\s*(\d+(?:\.\d+)?)?['’m]?\s*(\d+(?:\.\d+)?)?["”s]?/i);
+    if(dms){
+      const deg=parseFloat(dms[1]||'0');
+      const min=parseFloat(dms[2]||'0');
+      const sec=parseFloat(dms[3]||'0');
+      return deg + (min/60) + (sec/3600);
+    }
+    const n=parseFloat(s.replace(',','.'));
+    return Number.isFinite(n)?n:null;
+  }
+
   async function call(path, payload, expectSVG=false){
     const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!r.ok){ const txt=await r.text().catch(()=> ""); throw new Error(`HTTP ${r.status}: ${txt}`); }
@@ -204,10 +221,6 @@ WIDGET_HTML = r'''<!doctype html>
   }
   const clone = obj => JSON.parse(JSON.stringify(obj));
 
-  // ===== Signos / grados
-  function signFromLon(lon){ const i=Math.floor(clamp360(lon)/30); return ["Aries","Tauro","G\u00e9minis","C\u00e1ncer","Leo","Virgo","Libra","Escorpio","Sagitario","Capricornio","Acuario","Piscis"][i]||""; }
-  function degStr(lon){ const d=clamp360(lon); const g=Math.floor(d%30); const m=Math.round((d%30-g)*60); return `${g}°${String(m).padStart(2,'0')}'`; }
-
   // ===== Aspectos: normalización ES/EN + ángulos
   function sinAcentos(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
   function aspectKey(raw){
@@ -241,9 +254,8 @@ WIDGET_HTML = r'''<!doctype html>
     septile:"Septil", biseptile:"Biseptil", triseptile:"Triseptil", undecile:"Undécil"
   };
 
-  // ===== Puntos canónicos (en inglés) que pedimos a la API (sin True_Node)
+  // ===== Puntos canónicos que pedimos a la API (sin True_Node)
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
-  // índices que a veces devuelven en aspectos/casas
   const NUM2CAN = {"0":"Sun","17":"Ascendant","18":"Medium_Coeli","19":"Descendant","20":"Imum_Coeli"};
 
   // Etiquetas en español (como se muestran)
@@ -256,28 +268,29 @@ WIDGET_HTML = r'''<!doctype html>
     "Chiron":"Quirón","Mean_Lilith":"Lilith (media)"
   };
 
-  // Diccionario ES → EN para nombres de cuerpos que pueden venir en español
+  // Alias ES → EN y abreviaturas (ASC/MC/IC/DSC)
   const SP2CAN = (()=> {
-    const base = {
+    const out = {
       "sol":"Sun","luna":"Moon","mercurio":"Mercury","venus":"Venus","marte":"Mars","jupiter":"Jupiter","j\u00fapiter":"Jupiter",
       "saturno":"Saturn","urano":"Uranus","neptuno":"Neptune","pluton":"Pluto","plut\u00f3n":"Pluto",
-      "ascendente":"Ascendant","descendente":"Descendant",
-      "medio_cielo":"Medium_Coeli","medio_cielo)":"Medium_Coeli","mediu_cielo":"Medium_Coeli",
-      "fondo_del_cielo":"Imum_Coeli","fondo_de_cielo":"Imum_Coeli",
+      "ascendente":"Ascendant","asc":"Ascendant","ac":"Ascendant","as":"Ascendant",
+      "descendente":"Descendant","dsc":"Descendant","dc":"Descendant",
+      "medio_cielo":"Medium_Coeli","mc":"Medium_Coeli",
+      "fondo_del_cielo":"Imum_Coeli","ic":"Imum_Coeli",
       "nodo_norte":"Mean_Node","nodo_sur":"Mean_South_Node",
       "quiron":"Chiron","quir\u00f3n":"Chiron",
-      "lilith":"Mean_Lilith","lilith_media":"Mean_Lilith"
+      "lilith":"Mean_Lilith","lilith_media":"Mean_Lilith",
+      "nodo_norte_medio":"Mean_Node","nodo_sur_medio":"Mean_South_Node"
     };
-    // También añade alias por si vienen con espacios, guiones o con "(medio)"
-    const out = {};
-    const add = (k,v)=>{ out[k]=v; out[k.replace(/\s+/g,'_')]=v; out[k.replace(/[\s()]+/g,'_')]=v; };
-    for(const [k,v] of Object.entries(base)){ add(k,v); }
-    add("nodo_norte_medio","Mean_Node");
-    add("nodo_sur_medio","Mean_South_Node");
-    return out;
+    const withUnders = {};
+    for(const [k,v] of Object.entries(out)){
+      withUnders[k]=v;
+      withUnders[k.replace(/\s+/g,'_')]=v;
+      withUnders[k.replace(/[\s()]+/g,'_')]=v;
+    }
+    return withUnders;
   })();
 
-  // Extrae un número finito de varias formas
   function firstFinite(...vals){
     for(const v of vals){
       const n = (typeof v==="object" && v && "decimal" in v) ? v.decimal : v;
@@ -293,7 +306,6 @@ WIDGET_HTML = r'''<!doctype html>
     );
   }
 
-  // Construye mapas: alias→canónico y longitudes; añade alias en español
   function buildPointMaps(points, houses){
     const aliasToCanon = {};
     const lonByCanon   = {};
@@ -308,7 +320,6 @@ WIDGET_HTML = r'''<!doctype html>
       const lon = getLon(p);
       if(lon!=null) lonByCanon[canon] = lon;
 
-      // Alias típicos
       [
         raw, p.id, p.point, p.code, p.symbol, p.name, p.body, p.planet,
         String(enumIdx), String(enumIdx+1),
@@ -318,14 +329,13 @@ WIDGET_HTML = r'''<!doctype html>
       rowsCanon.push([canon, lon, p.house ?? p.house_number ?? ""]);
     });
 
-    // Alias en español para todas las etiquetas públicas
+    // Alias ES de etiquetas públicas y abreviaturas
     for(const [en, es] of Object.entries(POINT_ES)){
       const k1 = norm(es);
       const k2 = k1.replace(/[\s()]+/g,'_');
       aliasToCanon[k1] = en;
       aliasToCanon[k2] = en;
     }
-    // Alias ES especiales (SP2CAN)
     for(const [k,v] of Object.entries(SP2CAN)){ aliasToCanon[k]=v; }
 
     // Cúspides → ángulos si faltan
@@ -340,10 +350,8 @@ WIDGET_HTML = r'''<!doctype html>
     if(Number.isFinite(lonDesc)) lonByCanon["Descendant"] = lonDesc;
     if(Number.isFinite(lonIc  )) lonByCanon["Imum_Coeli"] = lonIc;
 
-    // índices numéricos
     Object.keys(NUM2CAN).forEach(k => aliasToCanon[k]=NUM2CAN[k]);
 
-    // Tabla ES (siempre sin True_Node)
     const rowsES = rowsCanon
       .filter(([canon]) => canon !== "True_Node")
       .map(([canon,lon,house])=>[canon, signFromLon(Number(lon||0)), degStr(Number(lon||0)), house])
@@ -352,15 +360,14 @@ WIDGET_HTML = r'''<!doctype html>
     return { aliasToCanon, lonByCanon, rowsES };
   }
 
-  // Traduce lo que venga (índice, inglés, español) → clave canónica EN
   function toCanon(x, maps){
     if(x==null) return "";
     const sRaw = String(x).trim();
-    if(NUM2CAN[sRaw]) return NUM2CAN[sRaw];     // índices conocidos (17,18,19,20...)
+    if(NUM2CAN[sRaw]) return NUM2CAN[sRaw];
     if(/^\d+$/.test(sRaw)){
       const n = parseInt(sRaw,10);
-      if(n>=0 && n < ORDER.length) return ORDER[n];     // 0-based
-      if(n>=1 && n <= ORDER.length) return ORDER[n-1];  // 1-based
+      if(n>=0 && n < ORDER.length) return ORDER[n];
+      if(n>=1 && n <= ORDER.length) return ORDER[n-1];
     }
     const k = sRaw.toLowerCase();
     if(maps.aliasToCanon[k]) return maps.aliasToCanon[k];
@@ -369,9 +376,39 @@ WIDGET_HTML = r'''<!doctype html>
     const kU = kN.replace(/[\s()]+/g,'_');
     if(maps.aliasToCanon[kU]) return maps.aliasToCanon[kU];
     if(SP2CAN[kU]) return SP2CAN[kU];
-    return sRaw; // último recurso
+    return sRaw;
   }
   const toES = canon => POINT_ES[canon] || canon.replace(/_/g,' ');
+
+  // Intenta extraer longitudes de los **aspectos** (por si el backend no trajo lista de puntos)
+  function lonFromAspect(a, idx){
+    const tryKeys = [
+      `lon_${idx}`, `longitude_${idx}`, `long_${idx}`, `deg_${idx}`,
+      `lon${idx}`, `longitude${idx}`, `long${idx}`, `deg${idx}`,
+      idx===1? 'lon1':'lon2', idx===1? 'longitude1':'longitude2',
+      idx===1? 'point_1_lon':'point_2_lon', idx===1? 'point_1_longitude':'point_2_longitude',
+      idx===1? 'p1_lon':'p2_lon', idx===1? 'p1_longitude':'p2_longitude',
+      idx===1? 'body1_lon':'body2_lon', idx===1? 'body_1_lon':'body_2_lon',
+      idx===1? 'body1_longitude':'body2_longitude', idx===1? 'body_1_longitude':'body_2_longitude',
+      idx===1? 'planet1_lon':'planet2_lon', idx===1? 'planet1_longitude':'planet2_longitude',
+      idx===1? 'obj1_lon':'obj2_lon', idx===1? 'object1_lon':'object2_lon',
+      idx===1? 'object1_longitude':'object2_longitude',
+      idx===1? 'a_lon':'b_lon', idx===1? 'a_longitude':'b_longitude'
+    ];
+    for(const k of tryKeys){
+      if(a && k in a){
+        const v = parseAngleAny(a[k]);
+        if(Number.isFinite(v)) return v;
+      }
+    }
+    // anidado:
+    const nested = idx===1? (a.first||a.from||a.point1||a.body1||a.obj1||a.object1) : (a.second||a.to||a.point2||a.body2||a.obj2||a.object2);
+    if(nested){
+      const v = parseAngleAny(nested.lon||nested.longitude||nested.deg||nested.degree||nested.value||nested.position||nested.ecliptic?.lon||nested.ecliptic?.longitude);
+      if(Number.isFinite(v)) return v;
+    }
+    return null;
+  }
 
   // ================== GENERAR ==================
   async function generar(){
@@ -439,7 +476,7 @@ WIDGET_HTML = r'''<!doctype html>
         html += `<h3>Casas (cúspides)</h3><table>${head}${body}</table>`;
       }
 
-      // Aspectos → normalizar ES/EN, filtrar True_Node y calcular ORBE SIEMPRE
+      // Aspectos → orbe (3 vías)
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
       if(aspects.length){
         const rowsA = aspects.map(a=>{
@@ -453,23 +490,29 @@ WIDGET_HTML = r'''<!doctype html>
 
           const canon1 = toCanon(cand1, maps);
           const canon2 = toCanon(cand2, maps);
-          if(canon1==="True_Node" || canon2==="True_Node") return null; // excluye Nodo Norte verdadero
+          if(canon1==="True_Node" || canon2==="True_Node") return null;
 
           const disp1  = toES(canon1);
           const disp2  = toES(canon2);
 
-          // separación real: usa la del backend si viene; si no, calcula con longitudes
-          const l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2];
-          const sepField = Number(a.separation ?? a.sep ?? a.sep_deg ?? a.angle ?? a.angle_deg ?? a.aspect_angle);
-          const sep = Number.isFinite(sepField) ? Math.abs(sepField)
-                    : (Number.isFinite(l1) && Number.isFinite(l2) ? minSepDeg(l1,l2) : NaN);
+          // 1) longitudes desde mapas (puntos/cúspides)
+          let l1 = maps.lonByCanon[canon1], l2 = maps.lonByCanon[canon2];
 
-          // ORBE = |sep − target|
-          const orb = (Number.isFinite(sep) && Number.isFinite(target))
-            ? fmtDegMin(Math.abs(sep - target))
-            : "—";
+          // 2) si faltan, intenta sacarlas del propio aspecto
+          if(!Number.isFinite(l1)) l1 = lonFromAspect(a,1);
+          if(!Number.isFinite(l2)) l2 = lonFromAspect(a,2);
 
-          return [label || "—", disp1 || "—", disp2 || "—", orb];
+          // 3) separación directa si el backend la trajo
+          let sep = parseAngleAny(a.separation ?? a.sep ?? a.sep_deg ?? a.angle ?? a.angle_deg ?? a.aspect_angle);
+          if(!Number.isFinite(sep) && Number.isFinite(l1) && Number.isFinite(l2)) sep = minSepDeg(l1,l2);
+
+          // orbe: |sep − target|, y si aún no hay, parsea a.orb / delta etc.
+          let orb = (Number.isFinite(sep) && Number.isFinite(target))
+            ? Math.abs(sep - target)
+            : parseAngleAny(a.orb ?? a.orb_deg ?? a.orbital ?? a.orb_value ?? a.delta ?? a.delta_deg ?? a.distance ?? a.error ?? a.difference ?? a.deg_diff ?? a.exactness);
+
+          const orbStr = Number.isFinite(orb) ? fmtDegMin(Math.abs(orb)) : "—";
+          return [label || "—", disp1 || "—", disp2 || "—", orbStr];
         }).filter(Boolean);
 
         const head = "<thead><tr><th>Aspecto</th><th>Cuerpo 1</th><th>Cuerpo 2</th><th>Orbe</th></tr></thead>";
@@ -492,6 +535,7 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
+
 
 
 
