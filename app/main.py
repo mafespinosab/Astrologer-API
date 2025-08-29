@@ -250,7 +250,7 @@ WIDGET_HTML = r'''<!doctype html>
 
   // ===== Nombres / aspectos =====
   const ASPECT_ANGLE = {conjunction:0,opposition:180,square:90,trine:120,sextile:60,quincunx:150,inconjunct:150,semisextile:30,semisquare:45,sesquiquadrate:135,quintile:72,biquintile:144,novile:40,binovile:80,septile:51.4286,biseptile:102.8571,triseptile:154.2857,undecile:32.7273};
-  const ASPECTO_ES = {conjunction:"Conjunción",opposition:"Oposición",square:"Cuadratura",trine:"Trígono",sextil:"Sextil",quincunx:"Quincuncio",semisextile:"Semisextil",semisquare:"Semicuadratura",sesquiquadrate:"Sesquicuadratura",quintile:"Quintil",biquintile:"Biquintil",novile:"Novil",binovile:"Binovil",septile:"Septil",biseptile:"Biseptil",triseptile:"Triseptil",undecile:"Undécil"};
+  const ASPECTO_ES = {conjunction:"Conjunción",opposition:"Oposición",square:"Cuadratura",trine:"Trígono",sextile:"Sextil",quincunx:"Quincuncio",semisextile:"Semisextil",semisquare:"Semicuadratura",sesquiquadrate:"Sesquicuadratura",quintile:"Quintil",biquintile:"Biquintil",novile:"Novil",binovile:"Binovil",septile:"Septil",biseptile:"Biseptil",triseptile:"Triseptil",undecile:"Undécil"};
   function sinAcentos(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
   function aspectKey(raw){
     const t=(raw||"").toString();
@@ -276,70 +276,6 @@ WIDGET_HTML = r'''<!doctype html>
     return parseAngleAny(v);
   }
 
-  // === detectores de cúspides (robusto) ===
-  function extractCuspsFromContainer(cont){
-    if(!cont) return null;
-    // Caso A: array [12] con números/strings/objetos
-    if(Array.isArray(cont) && cont.length>=12){
-      const out = [null];
-      for(let i=0;i<12;i++){ const val=getLonFromObj(cont[i]); out[i+1]=Number.isFinite(val)?clamp360(val):null; }
-      if(out.slice(1).every(v=>Number.isFinite(v))) return out;
-    }
-    // Caso B: objeto con keys 1..12 o cusp1..cusp12 o house1..house12
-    if(typeof cont==='object'){
-      const out=[null];
-      let filled=0;
-      for(let i=1;i<=12;i++){
-        const keys=[
-          String(i), `${i}`, `cusp${i}`, `cusp_${i}`, `house${i}`, `house_${i}`, `H${i}`, `House${i}`, `house_${String(i).padStart(2,'0')}`
-        ];
-        let val=null;
-        for(const k of keys){
-          if(k in cont){ val = getLonFromObj(cont[k]); if(Number.isFinite(val)) break; }
-          // si hay sub-objeto {longitude: x}
-          if(cont[k] && typeof cont[k]==='object'){
-            const tryLon = getLonFromObj(cont[k]);
-            if(Number.isFinite(tryLon)){ val=tryLon; break; }
-          }
-        }
-        if(!Number.isFinite(val) && cont[i-1]!=null){
-          const tryArr = getLonFromObj(cont[i-1]);
-          if(Number.isFinite(tryArr)) val = tryArr;
-        }
-        out[i] = Number.isFinite(val)?clamp360(val):null;
-        if(Number.isFinite(out[i])) filled++;
-      }
-      if(filled===12) return out;
-      // Caso C: lista de objetos {number: i, ...}
-      if(Array.isArray(cont)){
-        const map=[null];
-        cont.forEach(h=>{
-          const n = h?.number ?? h?.house ?? h?.index;
-          const v = getLonFromObj(h);
-          if(n>=1&&n<=12 && Number.isFinite(v)) map[n]=clamp360(v);
-        });
-        if(map.filter(Boolean).length===12) return map;
-      }
-    }
-    return null;
-  }
-
-  function extractCuspsFromResponse(res){
-    const candidates = [
-      res?.house_cusps, res?.houses, res?.cusps, res?.houses_cusps,
-      res?.data?.house_cusps, res?.data?.houses, res?.data?.cusps,
-      res?.chart?.house_cusps, res?.chart?.houses, res?.chart?.cusps
-    ];
-    for(const c of candidates){
-      const got = extractCuspsFromContainer(c);
-      if(got && got.filter(Boolean).length===12) return got;
-    }
-    // A veces viene todo el objeto como {1:...,2:..., ...}
-    const direct = extractCuspsFromContainer(res);
-    if(direct && direct.filter(Boolean).length===12) return direct;
-    return null;
-  }
-
   // === SVG → PNG para el PDF ===
   function svgToPngDataUrl(svgEl, widthPx=1000){
     return new Promise((resolve)=>{
@@ -361,7 +297,7 @@ WIDGET_HTML = r'''<!doctype html>
     });
   }
 
-  // === Exportar PDF (ajuste a la derecha) ===
+  // === Exportar PDF (más margen a la izq.) ===
   async function descargarPDF(){
     try{
       const container = document.getElementById('resultado');
@@ -372,32 +308,32 @@ WIDGET_HTML = r'''<!doctype html>
       const svgBox = container.querySelector('#svg');
       const oldSVG = svgBox ? svgBox.innerHTML : '';
       if(svgEl){
-        const dataUrl = await svgToPngDataUrl(svgEl, 950);
+        const dataUrl = await svgToPngDataUrl(svgEl, 1000);
         svgBox.innerHTML = '';
         const img = document.createElement('img');
         img.src = dataUrl || '';
-        img.style.width = '700px';
+        img.style.width = '720px';
         img.style.height = 'auto';
         img.style.display = 'block';
         img.style.margin = '0 auto';
         svgBox.appendChild(img);
       }
 
-      // Mostrar pie y aplicar un pequeño padding izquierdo para “correr” a la derecha
+      // Mostrar pie y aplicar padding para “correr” a la derecha
       const pdfOnly = container.querySelectorAll('.pdf-only'); pdfOnly.forEach(el=> el.style.display='block');
       const oldWidth = container.style.width, oldMaxWidth = container.style.maxWidth, oldPad = container.style.padding;
       container.style.width='794px'; container.style.maxWidth='794px';
-      container.style.padding='0 14px 0 28px'; // más margen a la izquierda para que no quede pegado
+      container.style.padding='0 18px 0 46px'; // más a la derecha
 
       const nombre = (document.getElementById('inp-name').value || 'Carta-natal').trim().replace(/\s+/g,'_');
       const fecha = (document.getElementById('inp-date').value || '').replace(/-/g,'');
       const file = `Carta-natal_${nombre || 'Consulta'}_${fecha || ''}.pdf`;
 
       await html2pdf().set({
-        margin:       [12,16,18,10], // un poco más de margen izquierdo
+        margin:       [12,14,18,20],   // margen izquierdo más grande
         filename:     file,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1000 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1100 },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak:    { mode: ['css','legacy'] }
       }).from(container).save();
@@ -413,17 +349,6 @@ WIDGET_HTML = r'''<!doctype html>
   }
 
   // === Endpoints auxiliares ===
-  async function fetchHousesResponse(subject){
-    const tryEndpoints = ['/natal-houses','/houses','/natal-chart-data','/natal-positions','/chart-data','/natal-aspects-data'];
-    for(const ep of tryEndpoints){
-      try{
-        const res = await callWithFallbacks(APIBASE+ep, {subject, language:LANG, active_points:["Ascendant","Medium_Coeli"]}, false);
-        // si viene JSON plano, lo devolvemos; si viene array, lo envolvemos
-        if(res) return res;
-      }catch(_){}
-    }
-    return null;
-  }
   async function fetchAsc(subject){
     const tryEndpoints = ['/natal-positions','/positions','/natal-points','/points','/chart-data','/natal-aspects-data'];
     for(const ep of tryEndpoints){
@@ -442,25 +367,60 @@ WIDGET_HTML = r'''<!doctype html>
     }
     return null;
   }
-  async function fetchPlanetPositions(subject){
+
+  // PLANETAS: obtenemos longitudes y, si el backend lo trae, **número de casa** directo.
+  async function fetchPlanetPositionsAndHouses(subject){
     const tryEndpoints = ['/natal-positions','/positions','/natal-points','/points','/chart-data'];
     for(const ep of tryEndpoints){
       try{
-        const res = await callWithFallbacks(APIBASE+ep, {subject, language:LANG, active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"]}, false);
+        const res = await callWithFallbacks(APIBASE+ep, {subject, language:LANG, active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli"]}, false);
         const lists = [res?.planets, res?.points, res?.data?.planets, res?.data?.points, Array.isArray(res)?res: null].filter(Boolean);
         const arr = lists[0] || [];
-        const out = {};
+        const lonBy = {}, houseBy = {};
         for(const p of arr){
-          const name = toCanon(p.name ?? p.point ?? p.id ?? p.code ?? p.label);
-          if(["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"].includes(name)){
-            const v = getLonFromObj(p);
-            if(Number.isFinite(v)) out[name] = clamp360(v);
+          const canon = toCanon(p.name ?? p.point ?? p.id ?? p.code ?? p.label);
+          const lon = getLonFromObj(p);
+          if(Number.isFinite(lon)) lonBy[canon] = clamp360(lon);
+          // Casa puede venir como: house, house_index, house_no, house_number, domus…
+          const hv = p.house ?? p.house_index ?? p.house_no ?? p.house_number ?? p.domus ?? p?.position?.house ?? p?.domicile ?? null;
+          if(hv!=null){
+            const n = parseInt(hv,10);
+            if(Number.isFinite(n) && n>=1 && n<=12) houseBy[canon] = n;
           }
         }
-        if(Object.keys(out).length) return out;
+        return {lonBy, houseBy};
       }catch(_){}
     }
-    return {};
+    return {lonBy:{}, houseBy:{}};
+  }
+
+  // Cúspides (para calcular casas si el backend NO trae house por planeta)
+  async function fetchCusps(subject){
+    const tryEndpoints = ['/natal-houses','/houses','/natal-chart-data','/natal-positions','/chart-data','/natal-aspects-data'];
+    for(const ep of tryEndpoints){
+      try{
+        const res = await callWithFallbacks(APIBASE+ep, {subject, language:LANG, active_points:["Ascendant","Medium_Coeli"]}, false);
+        const candidates = [
+          res?.house_cusps, res?.houses, res?.cusps, res?.houses_cusps,
+          res?.data?.house_cusps, res?.data?.houses, res?.data?.cusps,
+          res?.chart?.house_cusps, res?.chart?.houses, res?.chart?.cusps
+        ];
+        for(const cont of candidates){
+          if(!cont) continue;
+          const out=[null];
+          if(Array.isArray(cont) && cont.length>=12){
+            for(let i=0;i<12;i++){ const v=getLonFromObj(cont[i]); out[i+1]=Number.isFinite(v)?clamp360(v):null; }
+          }else if(typeof cont==='object'){
+            for(let i=1;i<=12;i++){
+              const v = getLonFromObj(cont[i] ?? cont[`cusp${i}`] ?? cont[`house${i}`] ?? cont[`house_${i}`] ?? cont[`H${i}`] ?? cont[`House${i}`]);
+              out[i] = Number.isFinite(v)?clamp360(v):null;
+            }
+          }
+          if(out.slice(1).every(x=>Number.isFinite(x))) return out;
+        }
+      }catch(_){}
+    }
+    return [];
   }
 
   // === Generar ===
@@ -493,37 +453,40 @@ WIDGET_HTML = r'''<!doctype html>
       const data = await callWithFallbacks(APIBASE+'/natal-aspects-data',{ subject, language:LANG, active_points }, false);
       const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
 
-      // 3) Posiciones planetarias
-      let lonByPlanet = await fetchPlanetPositions(subject);
-      if(Object.keys(lonByPlanet).length < 10){
+      // 3) Posiciones planetarias + casas del backend (si están)
+      const {lonBy, houseBy} = await fetchPlanetPositionsAndHouses(subject);
+
+      // 4) Si faltan longitudes, intentar recuperarlas desde los aspectos
+      if(Object.keys(lonBy).length < 10){
         aspects.forEach(a=>{
           const n1 = toCanon(a.p1_name ?? a.point_1 ?? a.point1 ?? a.p1 ?? a.object1 ?? a.planet1);
           const n2 = toCanon(a.p2_name ?? a.point_2 ?? a.point2 ?? a.p2 ?? a.object2 ?? a.planet2);
           const l1 = parseAngleAny(a.p1_abs_pos ?? a.p1_longitude ?? a.p1_lon ?? a?.p1?.longitude);
           const l2 = parseAngleAny(a.p2_abs_pos ?? a.p2_longitude ?? a.p2_lon ?? a?.p2?.longitude);
-          if(Number.isFinite(l1) && !lonByPlanet[n1]) lonByPlanet[n1]=clamp360(l1);
-          if(Number.isFinite(l2) && !lonByPlanet[n2]) lonByPlanet[n2]=clamp360(l2);
+          if(Number.isFinite(l1) && !lonBy[n1]) lonBy[n1]=clamp360(l1);
+          if(Number.isFinite(l2) && !lonBy[n2]) lonBy[n2]=clamp360(l2);
         });
       }
 
-      // 4) Cúspides (robusto) + Asc
-      const housesRes = await fetchHousesResponse(subject);
-      const cusps = extractCuspsFromResponse(housesRes) || [];
+      // 5) Si NO hay casa por planeta, calculamos con cúspides o Whole Sign (con ASC)
+      let cusps = [];
+      if(Object.keys(houseBy).length < 5){ // si el backend no dio casi nada
+        cusps = await fetchCusps(subject);
+      }
       const ascLon = await fetchAsc(subject);
 
-      // 5) Asignación de casas (sin rotar; tolerancia en vértices)
       function houseOfByCusps(lon){
         if(!cusps || cusps.filter(x=>Number.isFinite(x)).length!==12) return null;
-        const eps = 1/60; // 1' de arco
+        const eps = 1/60; // 1'
         const L = clamp360(lon);
         for(let i=1;i<=12;i++){
           const start = clamp360(cusps[i]);
           const end   = clamp360(cusps[i%12+1]);
           const dx  = (L - start + 360) % 360;
           const arc = (end - start + 360) % 360 || 30;
-          if(dx < eps) return i;                          // en la cúspide inicial → casa i
-          if(dx > eps && dx < arc - eps) return i;        // dentro del tramo
-          if(Math.abs(dx - arc) <= eps) return i;         // en la cúspide final lo mantenemos en i
+          if(dx < eps) return i;
+          if(dx > eps && dx < arc - eps) return i;
+          if(Math.abs(dx - arc) <= eps) return i;
         }
         return 12;
       }
@@ -533,17 +496,21 @@ WIDGET_HTML = r'''<!doctype html>
         const lonSign = Math.floor(clamp360(lon   )/30);
         return ((lonSign - ascSign + 12) % 12) + 1;
       }
-      function houseOf(lon){
+      function houseOfPlanet(canon, lon){
+        // prioridad: lo que diga el backend
+        const direct = houseBy[canon];
+        if(Number.isFinite(direct)) return direct;
+        // luego cálculo con cúspides, luego Whole Sign
         return houseOfByCusps(lon) ?? houseOfByWholeSign(lon) ?? "—";
       }
 
       // 6) Tabla de POSICIONES (con casas)
       const PLANETS = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"];
       const rowsPos = PLANETS.map(p=>{
-        const lon = lonByPlanet[p];
+        const lon = lonBy[p];
         const signo = Number.isFinite(lon)? signNameFromLon(lon) : "—";
         const grados = Number.isFinite(lon)? degInSign(lon) : "—";
-        const casa = Number.isFinite(lon)? houseOf(lon) : "—";
+        const casa = Number.isFinite(lon)? houseOfPlanet(p, lon) : "—";
         const nombre = {"Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno","Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón"}[p];
         return [nombre, signo, grados, casa];
       });
@@ -556,7 +523,7 @@ WIDGET_HTML = r'''<!doctype html>
       const countMod  = {Cardinal:0,Fijo:0,Mutable:0};
       let counted=0;
       PLANETS.forEach(p=>{
-        const lon=lonByPlanet[p];
+        const lon=lonBy[p];
         if(Number.isFinite(lon)){
           const si = Math.floor(clamp360(lon)/30);
           countElem[SIGN_TO_ELEMENT[si]]++;
