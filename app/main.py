@@ -55,7 +55,6 @@ WIDGET_HTML = r'''<!doctype html>
   :root{ --ink:#111; --line:#000; }
   *{box-sizing:border-box}
   body{font-family:system-ui,Arial,sans-serif;color:var(--ink);background:#fff;margin:0}
-  /* ancho pensado para A4 (html2pdf captura ~794px a 96dpi) */
   .box{max-width:820px;margin:0 auto;padding:24px 20px}
   h1,h2,h3{margin:0 0 12px}
   h1{font-size:26px}
@@ -77,16 +76,15 @@ WIDGET_HTML = r'''<!doctype html>
   table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed}
   thead th{background:#f7f7f7}
   th,td{border:1px solid var(--line);padding:8px 9px;text-align:left;font-size:14px;word-break:break-word;vertical-align:top}
-  /* permite que la tabla se parta por páginas, pero no rompas filas */
   tr{break-inside:avoid; page-break-inside:avoid}
 
   .svgwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;padding:8px;background:#fff}
   #svg svg{max-width:100%;height:auto;display:block}
 
-  /* salto de página REAL que html2pdf entiende (visible = block, alto 0) */
+  /* salto de página que html2pdf respeta */
   .pb{page-break-before:always; break-before:page; height:0; visibility:hidden}
 
-  /* pie SOLO en PDF (no lo muestro en pantalla, pero html2pdf lo captura) */
+  /* solo aparecerá en PDF (lo mostramos temporalmente por JS) */
   .pdf-only{display:none}
 
   #diag{display:none !important;}
@@ -146,7 +144,6 @@ WIDGET_HTML = r'''<!doctype html>
   </div>
 
   <div id="resultado" class="ok" style="display:none">
-    <!-- Gráfico -->
     <div id="svg" class="svgwrap"></div>
 
     <!-- Salto de página ANTES de las tablas -->
@@ -194,7 +191,7 @@ WIDGET_HTML = r'''<!doctype html>
   const esc = s => String(s).replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
   const log = (title,obj)=>{ if(!$diagC) return; $diagC.innerHTML += `<p><b>${title}</b></p><pre>${esc(JSON.stringify(obj,null,2))}</pre>`; };
 
-  // ===== Utilidades =====
+  // ===== Utilidades astro =====
   const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const ISO2 = {"colombia":"CO","argentina":"AR","chile":"CL","peru":"PE","ecuador":"EC","venezuela":"VE","uruguay":"UY","paraguay":"PY","bolivia":"BO","mexico":"MX","méxico":"MX","españa":"ES","espana":"ES","spain":"ES","portugal":"PT","francia":"FR","france":"FR","italia":"IT","italy":"IT","alemania":"DE","germany":"DE","reino unido":"GB","uk":"GB","inglaterra":"GB","united kingdom":"GB","estados unidos":"US","eeuu":"US","usa":"US","united states":"US","brasil":"BR","brazil":"BR","canadá":"CA","canada":"CA"};
   const splitDate = d => { const [y,m,day]=(d||'').split('-').map(n=>parseInt(n,10)); return {year:y,month:m,day}; };
@@ -271,7 +268,7 @@ WIDGET_HTML = r'''<!doctype html>
   const POINT_ES = {"Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno","Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón","Ascendant":"Ascendente","Medium_Coeli":"Medio Cielo","Mean_Node":"Nodo Norte","Mean_South_Node":"Nodo Sur","Chiron":"Quirón","Mean_Lilith":"Lilith (media)"};
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
   const ALIAS2CAN = (()=> {
-    const out = {"sun":"Sun","moon":"Moon","mercury":"Mercury","venus":"Venus","mars":"Mars","jupiter":"Jupiter","saturn":"Saturn","uranus":"Uranus","neptune":"Neptune","pluto":"Pluto","asc":"Ascendant","ascendant":"Ascendant","mc":"Medium_Coeli","medium_coeli":"Medium_Coeli","midheaven":"Medium_Coeli","mean_node":"Mean_Node","true_node":"True_Node","mean_south_node":"Mean_South_Node","chiron":"Chiron","mean_lilith":"Mean_Lilith","sol":"Sun","luna":"Moon","mercurio":"Mercury","marte":"Mars","j\u00fapiter":"Jupiter","jupiter":"Jupiter","saturno":"Saturno","urano":"Uranus","neptuno":"Neptune","pluton":"Pluto","plut\u00f3n":"Pluto","ascendente":"Ascendant","medio_cielo":"Medium_Coeli","nodo_norte":"Mean_Node"};
+    const out = {"sun":"Sun","moon":"Moon","mercury":"Mercury","venus":"Venus","mars":"Mars","jupiter":"Jupiter","saturn":"Saturn","uranus":"Uranus","neptune":"Neptune","pluto":"Pluto","asc":"Ascendant","ascendant":"Ascendant","mc":"Medium_Coeli","medium_coeli":"Medium_Coeli","midheaven":"Medium_Coeli","mean_node":"Mean_Node","true_node":"True_Node","mean_south_node":"Mean_South_Node","chiron":"Chiron","mean_lilith":"Mean_Lilith","sol":"Sun","luna":"Moon","mercurio":"Mercury","marte":"Mars","j\u00fapiter":"Jupiter","jupiter":"Jupiter","saturno":"Saturn","urano":"Uranus","neptuno":"Neptune","pluton":"Pluto","plut\u00f3n":"Pluto","ascendente":"Ascendant","medio_cielo":"Medium_Coeli","nodo_norte":"Mean_Node"};
     const exp={}; for(const [k,v] of Object.entries(out)){ exp[k]=v; exp[k.replace(/\s+/g,'_')]=v; exp[k.replace(/[\s\-()]+/g,'_')]=v; } return exp;
   })();
   function resolveCanonName(raw){
@@ -283,7 +280,8 @@ WIDGET_HTML = r'''<!doctype html>
   function toCanon(x){ return resolveCanonName(x) || String(x); }
 
   function getLonFromObj(o){
-    if(!o) return null;
+    if(!o && o!==0) return null;
+    if(typeof o==='number' || typeof o==='string') return parseAngleAny(o);
     const v = o.longitude ?? o.lon ?? o.abs_pos ?? o.value ?? o.position ?? o?.ecliptic?.lon ?? o?.ecliptic?.longitude;
     return parseAngleAny(v);
   }
@@ -309,52 +307,55 @@ WIDGET_HTML = r'''<!doctype html>
     });
   }
 
-  // === Exportar PDF (sin mover fuera de la pantalla) ===
+  // === Exportar PDF usando el propio nodo visible (sin clon oculto) ===
   async function descargarPDF(){
     try{
-      const src = document.querySelector('#svg svg');
-      let clone = document.getElementById('resultado').cloneNode(true);
+      const container = document.getElementById('resultado');
+      if(!container || container.style.display==='none'){ alert('Primero genera la carta.'); return; }
 
-      // Sustituir rueda por PNG en el clone
-      if(src){
-        const dataUrl = await svgToPngDataUrl(src, 950);
-        const wrap = clone.querySelector('#svg'); if(wrap){ wrap.innerHTML=''; }
+      // Guardar estado y preparar PNG
+      const svgEl = container.querySelector('#svg svg');
+      const svgBox = container.querySelector('#svg');
+      const oldSVG = svgBox ? svgBox.innerHTML : '';
+      if(svgEl){
+        const dataUrl = await svgToPngDataUrl(svgEl, 950);
+        svgBox.innerHTML = '';
         const img = document.createElement('img');
         img.src = dataUrl || '';
-        img.style.width = '700px';  // cabe en A4 con márgenes
+        img.style.width = '700px';
         img.style.height = 'auto';
         img.style.display = 'block';
         img.style.margin = '0 auto';
-        if(wrap) wrap.appendChild(img);
+        svgBox.appendChild(img);
       }
 
-      // Hacer visible al DOM en (0,0) para que html2canvas no lo corte a la izquierda
-      clone.style.width='794px';  // ancho A4 a 96dpi aprox
-      clone.style.maxWidth='794px';
-      clone.style.margin='0 auto';
-      clone.style.opacity='0';
-      clone.style.position='fixed';
-      clone.style.left='0';
-      clone.style.top='0';
-      clone.style.zIndex='-1';
+      // Mostrar pie solo para PDF
+      const pdfOnly = container.querySelectorAll('.pdf-only');
+      pdfOnly.forEach(el=> el.style.display='block');
 
-      document.body.appendChild(clone);
+      // Forzar ancho A4 amigable para html2pdf
+      const oldWidth = container.style.width, oldMaxWidth = container.style.maxWidth;
+      container.style.width='794px';
+      container.style.maxWidth='794px';
 
       const nombre = (document.getElementById('inp-name').value || 'Carta-natal').trim().replace(/\s+/g,'_');
       const fecha = (document.getElementById('inp-date').value || '').replace(/-/g,'');
       const file = `Carta-natal_${nombre || 'Consulta'}_${fecha || ''}.pdf`;
 
-      if(!window.html2pdf){ window.print(); clone.remove(); return; }
       await html2pdf().set({
-        margin:       [12,12,18,12],       // un poco más abajo para que no corte la última fila
+        margin:       [12,12,18,12],
         filename:     file,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1000 },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak:    { mode: ['css','legacy'] } // respeta .pb y evita cortes raros
-      }).from(clone).save();
+        pagebreak:    { mode: ['css','legacy'] }
+      }).from(container).save();
 
-      clone.remove();
+      // Revertir estado
+      if(svgBox){ svgBox.innerHTML = oldSVG; }
+      pdfOnly.forEach(el=> el.style.display='none');
+      container.style.width = oldWidth; container.style.maxWidth = oldMaxWidth;
+
     }catch(e){
       alert('No se pudo crear el PDF. Como alternativa usa Imprimir → Guardar como PDF.');
     }
@@ -447,7 +448,7 @@ WIDGET_HTML = r'''<!doctype html>
       // 3) Posiciones planetarias (endpoint directo)
       let lonByPlanet = await fetchPlanetPositions(subject);
 
-      // Relleno con datos de aspectos si faltó alguno
+      // Relleno desde aspectos si faltó alguno
       if(Object.keys(lonByPlanet).length < 10){
         aspects.forEach(a=>{
           const n1 = toCanon(a.p1_name ?? a.point_1 ?? a.point1 ?? a.p1 ?? a.object1 ?? a.planet1);
@@ -459,31 +460,34 @@ WIDGET_HTML = r'''<!doctype html>
         });
       }
 
-      // 4) Cúspides y Ascendente
+      // 4) Cúspides y Ascendente (acepta array numérico o objetos)
       const housesArr = await fetchHouses(subject);
       const cusps = [];
       if(Array.isArray(housesArr) && housesArr.length){
         for(let i=1;i<=12;i++){
-          const hObj = housesArr.find(h => (h.number ?? h.house) == i) || housesArr[i-1];
+          const hObj = housesArr.find(h => (h?.number ?? h?.house) == i) ?? housesArr[i-1];
           const val = getLonFromObj(hObj);
           cusps[i] = Number.isFinite(val)? clamp360(val) : null;
         }
       }
       const ascLon = await fetchAsc(subject);
 
-      // Asignación de casa SIN rotar y con borde inclusivo al inicio y al final
+      // 5) Asignación de casas (sin rotar; borde amigable)
       function houseOfByCusps(lon){
         const valid = cusps.filter(x=>Number.isFinite(x)).length===12;
         if(!valid) return null;
-        const eps = 1/3600; // 1" de arco
+        const eps = 1/60; // 1' de arco
         const L = clamp360(lon);
         for(let i=1;i<=12;i++){
           const start = clamp360(cusps[i]);
           const end   = clamp360(cusps[i%12+1]);
           const dx  = (L - start + 360) % 360;
           const arc = (end - start + 360) % 360 || 30;
-          // Inclusivo en el inicio y (casi) inclusivo al final para no empujar al planeta a la casa siguiente
-          if(dx >= 0 && dx <= arc + eps) return i;
+          if(dx < eps) { // prácticamente sobre la cúspide inicial → casa actual (i)
+            return i;
+          }
+          if(dx > eps && dx < arc - eps) return i; // dentro del tramo
+          if(Math.abs(dx - arc) <= eps) return i;   // sobre la cúspide final → aún i
         }
         return 12;
       }
@@ -497,21 +501,21 @@ WIDGET_HTML = r'''<!doctype html>
         return houseOfByCusps(lon) ?? houseOfByWholeSign(lon) ?? "—";
       }
 
-      // 5) Tabla de POSICIONES
+      // 6) Tabla de POSICIONES
       const PLANETS = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"];
       const rowsPos = PLANETS.map(p=>{
         const lon = lonByPlanet[p];
         const signo = Number.isFinite(lon)? signNameFromLon(lon) : "—";
         const grados = Number.isFinite(lon)? degInSign(lon) : "—";
         const casa = Number.isFinite(lon)? houseOf(lon) : "—";
-        const nombre = {"Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Júpiter":"Júpiter","Jupiter":"Júpiter","Saturn":"Saturno","Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón"}[p];
+        const nombre = {"Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno","Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón"}[p];
         return [nombre, signo, grados, casa];
       });
       const headPos = "<thead><tr><th>Planeta</th><th>Signo</th><th>Grados</th><th>Casa</th></tr></thead>";
       const bodyPos = "<tbody>"+rowsPos.map(r=>"<tr>"+r.map(c=>`<td>${c}</td>`).join("")+"</tr>").join("")+"</tbody>";
       $pos.innerHTML = `<h2>Posiciones planetarias</h2><table>${headPos}${bodyPos}</table>`;
 
-      // 6) Elementos y Cualidades
+      // 7) Elementos y Cualidades
       const countElem = {Fuego:0,Tierra:0,Aire:0,Agua:0};
       const countMod  = {Cardinal:0,Fijo:0,Mutable:0};
       let counted=0;
@@ -534,7 +538,7 @@ WIDGET_HTML = r'''<!doctype html>
            <div><table><thead><tr><th>Cualidad</th><th>%</th></tr></thead><tbody>${modRows}</tbody></table></div>
          </div>`;
 
-      // 7) Aspectos con orbe
+      // 8) Aspectos con orbe
       function lonFromAspect(a, idx){
         const pref = idx===1 ? 'p1' : 'p2';
         const candidates = [a[`${pref}_abs_pos`], a[`${pref}_abs_long`], a[`${pref}_abs_longitude`], a[`${pref}_longitude`], a[`${pref}_lon`], a[`${pref}_long`]];
@@ -542,6 +546,14 @@ WIDGET_HTML = r'''<!doctype html>
         const nested = a[pref] || a[idx===1?'first':'second'] || a[idx===1?'from':'to'] || a[idx===1?'object1':'object2'] || a[idx===1?'point1':'point2'];
         if(nested){ const v = getLonFromObj(nested); if(Number.isFinite(v)) return v; }
         return null;
+      }
+      const ASPECT_ANGLE = {conjunction:0,opposition:180,square:90,trine:120,sextile:60,quincunx:150,inconjunct:150,semisextile:30,semisquare:45,sesquiquadrate:135,quintile:72,biquintile:144,novile:40,binovile:80,septile:51.4286,biseptile:102.8571,triseptile:154.2857,undecile:32.7273};
+      const ASPECTO_ES = {conjunction:"Conjunción",opposition:"Oposición",square:"Cuadratura",trine:"Trígono",sextil:"Sextil",quincunx:"Quincuncio",semisextile:"Semisextil",semisquare:"Semicuadratura",sesquiquadrate:"Sesquicuadratura",quintile:"Quintil",biquintile:"Biquintil",novile:"Novil",binovile:"Binovil",septile:"Septil",biseptile:"Biseptil",triseptile:"Triseptil",undecile:"Undécil"};
+      function aspectKey(raw){
+        const t=(raw||"").toString();
+        const lower=(t.normalize("NFD").replace(/[\u0300-\u036f]/g,"")).toLowerCase().replace(/[\s-]+/g,"_");
+        const map={conjuncion:"conjunction",conj:"conjunction",oposicion:"opposition",opp:"opposition",cuadratura:"square",trigono:"trine",tri:"trine",sextil:"sextile",sex:"sextile",quincuncio:"quincunx",inconjuncto:"quincunx",inconjunct:"quincunx",semicuadratura:"semisquare",sesquicuadratura:"sesquiquadrate",semisextil:"semisextile"};
+        return map[lower] || lower;
       }
       const rowsA = aspects.map(a=>{
         const key = aspectKey(a.type || a.aspect || a.kind || "");
@@ -587,15 +599,6 @@ WIDGET_HTML = r'''<!doctype html>
 </script>
 </body></html>
 '''
-
-
-
-
-
-
-
-
-
 
 
 
