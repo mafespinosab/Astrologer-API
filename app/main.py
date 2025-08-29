@@ -45,17 +45,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 WIDGET_HTML = r'''<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Tu carta natal</title>
 <style>
-  :root{ --ink:#111; --line:#000; --pxmm:3.78; } /* 1 mm ≈ 3.78 px */
+  :root{ --ink:#111; --line:#000; }
   *{box-sizing:border-box}
   body{font-family:system-ui,Arial,sans-serif;color:var(--ink);background:#fff;margin:0}
-  /* ancho pensado para la vista (web). Para PDF uso un clon “A4” con ancho fijo en px */
-  .box{max-width:820px;margin:0 auto;padding:26px 22px}
+  /* ancho pensado para A4 (html2pdf captura ~794px a 96dpi) */
+  .box{max-width:820px;margin:0 auto;padding:24px 20px}
   h1,h2,h3{margin:0 0 12px}
   h1{font-size:26px}
   h2{font-size:20px}
@@ -66,40 +67,31 @@ WIDGET_HTML = r'''<!doctype html>
     background:#fff;color:#000;border-radius:10px;line-height:1.2
   }
   button{cursor:pointer;font-weight:800}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
   .mt{margin-top:16px}
   .btns{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
   .alert{border:1px solid var(--line);background:#fff;color:#000;border-radius:10px;padding:10px;margin:12px 0;display:none;white-space:pre-wrap}
-  .ok{border:1px solid var(--line);padding:20px;border-radius:10px;margin-top:18px}
-  .ok > * + *{margin-top:16px}
+  .ok{border:1px solid var(--line);padding:18px;border-radius:10px;margin-top:18px}
+  .ok > * + *{margin-top:14px}
+
   table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed}
   thead th{background:#f7f7f7}
   th,td{border:1px solid var(--line);padding:8px 9px;text-align:left;font-size:14px;word-break:break-word;vertical-align:top}
-  /* Permitir que la tabla continúe en la página siguiente, pero sin partir filas */
-  table{page-break-inside:auto}
+  /* permite que la tabla se parta por páginas, pero no rompas filas */
   tr{break-inside:avoid; page-break-inside:avoid}
-  thead{display:table-header-group} tfoot{display:table-footer-group}
+
   .svgwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;padding:8px;background:#fff}
   #svg svg{max-width:100%;height:auto;display:block}
 
-  .pagebreak{display:none}
+  /* salto de página REAL que html2pdf entiende (visible = block, alto 0) */
+  .pb{page-break-before:always; break-before:page; height:0; visibility:hidden}
+
+  /* pie SOLO en PDF (no lo muestro en pantalla, pero html2pdf lo captura) */
   .pdf-only{display:none}
+
   #diag{display:none !important;}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media (max-width:820px){ .row{grid-template-columns:1fr} .grid-2{grid-template-columns:1fr} }
-
-  /* En impresión del navegador (por si alguien usa Ctrl+P) */
-  @media print{
-    body{background:#fff;color:#000}
-    .alert, .btns{display:none !important}
-    .box{padding:10mm; max-width:190mm}
-    .ok{border:none;padding:0}
-    thead th{background:#eee}
-    .pdf-only{display:block !important}
-    .pagebreak{display:block; break-before:page}
-    #svg img.pdf-wheel{width:170mm; max-width:170mm; height:auto; display:block; margin:0 auto}
-    #svg svg{display:none !important}
-  }
 </style>
 </head><body>
 <div class="box">
@@ -154,10 +146,11 @@ WIDGET_HTML = r'''<!doctype html>
   </div>
 
   <div id="resultado" class="ok" style="display:none">
+    <!-- Gráfico -->
     <div id="svg" class="svgwrap"></div>
 
-    <!-- Página nueva para que la rueda quede sola en 1ª hoja -->
-    <div class="pagebreak"></div>
+    <!-- Salto de página ANTES de las tablas -->
+    <div id="pb1" class="pb"></div>
 
     <div class="grid-2">
       <div id="pos-table"></div>
@@ -167,7 +160,7 @@ WIDGET_HTML = r'''<!doctype html>
     <div id="tablas"></div>
 
     <!-- Pie SOLO PDF -->
-    <div class="pdf-only" style="margin-top:12px;border-top:1px solid #000;padding-top:8px;font-size:12px;">
+    <div class="pdf-only" id="pdf-footer" style="margin-top:12px;border-top:1px solid #000;padding-top:8px;font-size:12px;">
       <div><strong>www.astrologiamutante.com</strong></div>
       <div>tiktok: @astrologia_mutante · instagram: @astrologia_mutante</div>
     </div>
@@ -265,7 +258,7 @@ WIDGET_HTML = r'''<!doctype html>
     throw lastErr || new Error('No se pudo recuperar tras varios intentos.');
   }
 
-  // ===== Diccionarios =====
+  // ===== Nombres / aspectos =====
   const ASPECT_ANGLE = {conjunction:0,opposition:180,square:90,trine:120,sextile:60,quincunx:150,inconjunct:150,semisextile:30,semisquare:45,sesquiquadrate:135,quintile:72,biquintile:144,novile:40,binovile:80,septile:51.4286,biseptile:102.8571,triseptile:154.2857,undecile:32.7273};
   const ASPECTO_ES = {conjunction:"Conjunción",opposition:"Oposición",square:"Cuadratura",trine:"Trígono",sextile:"Sextil",quincunx:"Quincuncio",semisextile:"Semisextil",semisquare:"Semicuadratura",sesquiquadrate:"Sesquicuadratura",quintile:"Quintil",biquintile:"Biquintil",novile:"Novil",binovile:"Binovil",septile:"Septil",biseptile:"Biseptil",triseptile:"Triseptil",undecile:"Undécil"};
   function sinAcentos(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
@@ -279,7 +272,7 @@ WIDGET_HTML = r'''<!doctype html>
   const ORDER = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
   const ALIAS2CAN = (()=> {
     const out = {"sun":"Sun","moon":"Moon","mercury":"Mercury","venus":"Venus","mars":"Mars","jupiter":"Jupiter","saturn":"Saturn","uranus":"Uranus","neptune":"Neptune","pluto":"Pluto","asc":"Ascendant","ascendant":"Ascendant","mc":"Medium_Coeli","medium_coeli":"Medium_Coeli","midheaven":"Medium_Coeli","mean_node":"Mean_Node","true_node":"True_Node","mean_south_node":"Mean_South_Node","chiron":"Chiron","mean_lilith":"Mean_Lilith","sol":"Sun","luna":"Moon","mercurio":"Mercury","marte":"Mars","j\u00fapiter":"Jupiter","jupiter":"Jupiter","saturno":"Saturno","urano":"Uranus","neptuno":"Neptune","pluton":"Pluto","plut\u00f3n":"Pluto","ascendente":"Ascendant","medio_cielo":"Medium_Coeli","nodo_norte":"Mean_Node"};
-    const exp={}; for(const [k,v] of Object.entries(out)){ exp[k]=v; exp[k].toString(); exp[k.replace(/\s+/g,'_')]=v; exp[k.replace(/[\s\-()]+/g,'_')]=v; } return exp;
+    const exp={}; for(const [k,v] of Object.entries(out)){ exp[k]=v; exp[k.replace(/\s+/g,'_')]=v; exp[k.replace(/[\s\-()]+/g,'_')]=v; } return exp;
   })();
   function resolveCanonName(raw){
     if(!raw) return null;
@@ -289,15 +282,14 @@ WIDGET_HTML = r'''<!doctype html>
   }
   function toCanon(x){ return resolveCanonName(x) || String(x); }
 
-  // === util para leer longitudes en objetos variados ===
   function getLonFromObj(o){
     if(!o) return null;
     const v = o.longitude ?? o.lon ?? o.abs_pos ?? o.value ?? o.position ?? o?.ecliptic?.lon ?? o?.ecliptic?.longitude;
     return parseAngleAny(v);
   }
 
-  // === SVG → PNG solo en PDF (sin mover el clon fuera de la pantalla) ===
-  function svgToPngDataUrl(svgEl, widthPx){
+  // === SVG → PNG para el PDF ===
+  function svgToPngDataUrl(svgEl, widthPx=1000){
     return new Promise((resolve)=>{
       if(!svgEl) return resolve(null);
       const xml = new XMLSerializer().serializeToString(svgEl);
@@ -317,42 +309,34 @@ WIDGET_HTML = r'''<!doctype html>
     });
   }
 
+  // === Exportar PDF (sin mover fuera de la pantalla) ===
   async function descargarPDF(){
     try{
-      const A4_WIDTH_PX = 794;       // A4 @ 96dpi aprox
-      const MARGIN_MM   = 10;        // márgenes jsPDF
-      const PX_PER_MM   = 3.78;
-      const CONTENT_W   = Math.floor(A4_WIDTH_PX - 2 * MARGIN_MM * PX_PER_MM); // ~718px
-
-      // Clon “limpio” para PDF (no lo saco fuera de viewport: solo hidden)
+      const src = document.querySelector('#svg svg');
       let clone = document.getElementById('resultado').cloneNode(true);
-      clone.style.visibility = 'hidden';
-      clone.style.position   = 'fixed';
-      clone.style.left       = '0';
-      clone.style.top        = '0';
-      clone.style.width      = CONTENT_W + 'px';
-      // quitar padding/márgenes internos del clon para que no recorte por la izquierda
-      clone.querySelectorAll('.box').forEach(el=>{ el.style.padding='0'; el.style.margin='0 auto'; el.style.maxWidth='initial'; });
 
-      // mostrar pie PDF en el clon
-      clone.querySelectorAll('.pdf-only').forEach(el=> el.style.display='block');
-      // ocultar botones/alertas en el clon
-      clone.querySelectorAll('.btns,.alert').forEach(el=> el.remove());
-
-      // Sustituir SVG por PNG de ancho seguro
-      const srcSvg = document.querySelector('#svg svg');
-      if(srcSvg){
-        const pngURL = await svgToPngDataUrl(srcSvg, Math.min(CONTENT_W, 700));
+      // Sustituir rueda por PNG en el clone
+      if(src){
+        const dataUrl = await svgToPngDataUrl(src, 950);
         const wrap = clone.querySelector('#svg'); if(wrap){ wrap.innerHTML=''; }
         const img = document.createElement('img');
-        img.className = 'pdf-wheel';
-        img.src = pngURL || '';
-        img.style.width = Math.min(CONTENT_W, 700) + 'px';
+        img.src = dataUrl || '';
+        img.style.width = '700px';  // cabe en A4 con márgenes
         img.style.height = 'auto';
         img.style.display = 'block';
         img.style.margin = '0 auto';
         if(wrap) wrap.appendChild(img);
       }
+
+      // Hacer visible al DOM en (0,0) para que html2canvas no lo corte a la izquierda
+      clone.style.width='794px';  // ancho A4 a 96dpi aprox
+      clone.style.maxWidth='794px';
+      clone.style.margin='0 auto';
+      clone.style.opacity='0';
+      clone.style.position='fixed';
+      clone.style.left='0';
+      clone.style.top='0';
+      clone.style.zIndex='-1';
 
       document.body.appendChild(clone);
 
@@ -362,12 +346,12 @@ WIDGET_HTML = r'''<!doctype html>
 
       if(!window.html2pdf){ window.print(); clone.remove(); return; }
       await html2pdf().set({
-        margin:       [MARGIN_MM,MARGIN_MM,Math.max(MARGIN_MM,12),MARGIN_MM],  // un pelín más abajo
+        margin:       [12,12,18,12],       // un poco más abajo para que no corte la última fila
         filename:     file,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: A4_WIDTH_PX },
+        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1000 },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak:    { mode: ['css'] }
+        pagebreak:    { mode: ['css','legacy'] } // respeta .pb y evita cortes raros
       }).from(clone).save();
 
       clone.remove();
@@ -380,7 +364,230 @@ WIDGET_HTML = r'''<!doctype html>
   async function fetchHouses(subject){
     const tryEndpoints = ['/natal-houses','/houses','/natal-chart-data','/natal-positions','/chart-data','/natal-aspects-data'];
     for(const ep of tryEndpoints){
-     
+      try{
+        const res = await callWithFallbacks(APIBASE+ep, {subject, language:LANG, active_points:["Ascendant","Medium_Coeli"]}, false);
+        const candidates = [
+          res?.houses, res?.house_cusps, res?.data?.houses, res?.data?.house_cusps,
+          res?.chart?.houses, res?.chart?.house_cusps
+        ].filter(x=>Array.isArray(x) && x.length);
+        if(candidates[0]) return candidates[0];
+      }catch(_){}
+    }
+    return [];
+  }
+  async function fetchAsc(subject){
+    const tryEndpoints = ['/natal-positions','/positions','/natal-points','/points','/chart-data','/natal-aspects-data'];
+    for(const ep of tryEndpoints){
+      try{
+        const res = await callWithFallbacks(APIBASE+ep, {subject, language:LANG, active_points:["Ascendant"]}, false);
+        const lists = [res?.points, res?.planets, res?.data?.points, res?.data?.planets, Array.isArray(res)?res: null].filter(Boolean);
+        const arr = lists[0] || [];
+        for(const p of arr){
+          const name = toCanon(p.name ?? p.point ?? p.id ?? p.code ?? p.label);
+          if(name==="Ascendant"){
+            const v = getLonFromObj(p);
+            if(Number.isFinite(v)) return clamp360(v);
+          }
+        }
+      }catch(_){}
+    }
+    return null;
+  }
+  async function fetchPlanetPositions(subject){
+    const tryEndpoints = ['/natal-positions','/positions','/natal-points','/points','/chart-data'];
+    for(const ep of tryEndpoints){
+      try{
+        const res = await callWithFallbacks(APIBASE+ep, {subject, language:LANG, active_points:["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"]}, false);
+        const lists = [res?.planets, res?.points, res?.data?.planets, res?.data?.points, Array.isArray(res)?res: null].filter(Boolean);
+        const arr = lists[0] || [];
+        const out = {};
+        for(const p of arr){
+          const name = toCanon(p.name ?? p.point ?? p.id ?? p.code ?? p.label);
+          if(["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"].includes(name)){
+            const v = getLonFromObj(p);
+            if(Number.isFinite(v)) out[name] = clamp360(v);
+          }
+        }
+        if(Object.keys(out).length) return out;
+      }catch(_){}
+    }
+    return {};
+  }
+
+  // === Generar ===
+  async function generar(){
+    try{
+      hideAlert(); $out.style.display='none'; $svg.innerHTML=""; $tabs.innerHTML=""; $pos.innerHTML=""; $em.innerHTML="";
+      $btnGen.disabled=true; $btnGen.textContent="Calculando…"; $btnPDF.disabled=true;
+
+      const name=$('inp-name').value.trim()||"Consulta";
+      const city=$('inp-city').value.trim();
+      const country=$('inp-country').value.trim();
+      const {year,month,day}=splitDate($('inp-date').value);
+      const {hour,minute}=splitTime($('inp-time').value);
+      const house=$('inp-house').value||'P';
+      const zodiac='Tropic';
+      if(!year||!month||!day){ showAlert('Falta la fecha.'); return; }
+      if(!city||!country){ showAlert('Escribe ciudad y país.'); return; }
+      const code = ISO2[norm(country)] || null;
+
+      const subject={year,month,day,hour,minute,city,name,zodiac_type:zodiac,house_system:house,geonames_username:GEOUSER};
+      if(code) subject.nation=code;
+
+      const active_points=["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Ascendant","Medium_Coeli","Mean_Node","Mean_South_Node","Chiron","Mean_Lilith"];
+
+      // 1) Gráfico (SVG en pantalla)
+      const svg = await callWithFallbacks(APIBASE+'/birth-chart',{ subject, language:LANG, theme:THEME, style:THEME, chart_theme:THEME, active_points }, true);
+      if(svg && svg.includes('<svg')) $svg.innerHTML = svg;
+
+      // 2) Aspectos (para tabla y orbes)
+      const data = await callWithFallbacks(APIBASE+'/natal-aspects-data',{ subject, language:LANG, active_points }, false);
+      const aspects = (data && (data.aspects||data.natal_aspects)) ? (data.aspects||data.natal_aspects) : [];
+
+      // 3) Posiciones planetarias (endpoint directo)
+      let lonByPlanet = await fetchPlanetPositions(subject);
+
+      // Relleno con datos de aspectos si faltó alguno
+      if(Object.keys(lonByPlanet).length < 10){
+        aspects.forEach(a=>{
+          const n1 = toCanon(a.p1_name ?? a.point_1 ?? a.point1 ?? a.p1 ?? a.object1 ?? a.planet1);
+          const n2 = toCanon(a.p2_name ?? a.point_2 ?? a.point2 ?? a.p2 ?? a.object2 ?? a.planet2);
+          const l1 = parseAngleAny(a.p1_abs_pos ?? a.p1_longitude ?? a.p1_lon ?? a?.p1?.longitude);
+          const l2 = parseAngleAny(a.p2_abs_pos ?? a.p2_longitude ?? a.p2_lon ?? a?.p2?.longitude);
+          if(Number.isFinite(l1) && !lonByPlanet[n1]) lonByPlanet[n1]=clamp360(l1);
+          if(Number.isFinite(l2) && !lonByPlanet[n2]) lonByPlanet[n2]=clamp360(l2);
+        });
+      }
+
+      // 4) Cúspides y Ascendente
+      const housesArr = await fetchHouses(subject);
+      const cusps = [];
+      if(Array.isArray(housesArr) && housesArr.length){
+        for(let i=1;i<=12;i++){
+          const hObj = housesArr.find(h => (h.number ?? h.house) == i) || housesArr[i-1];
+          const val = getLonFromObj(hObj);
+          cusps[i] = Number.isFinite(val)? clamp360(val) : null;
+        }
+      }
+      const ascLon = await fetchAsc(subject);
+
+      // Asignación de casa SIN rotar y con borde inclusivo al inicio y al final
+      function houseOfByCusps(lon){
+        const valid = cusps.filter(x=>Number.isFinite(x)).length===12;
+        if(!valid) return null;
+        const eps = 1/3600; // 1" de arco
+        const L = clamp360(lon);
+        for(let i=1;i<=12;i++){
+          const start = clamp360(cusps[i]);
+          const end   = clamp360(cusps[i%12+1]);
+          const dx  = (L - start + 360) % 360;
+          const arc = (end - start + 360) % 360 || 30;
+          // Inclusivo en el inicio y (casi) inclusivo al final para no empujar al planeta a la casa siguiente
+          if(dx >= 0 && dx <= arc + eps) return i;
+        }
+        return 12;
+      }
+      function houseOfByWholeSign(lon){
+        if(!Number.isFinite(ascLon)) return null;
+        const ascSign = Math.floor(clamp360(ascLon)/30);
+        const lonSign = Math.floor(clamp360(lon   )/30);
+        return ((lonSign - ascSign + 12) % 12) + 1;
+      }
+      function houseOf(lon){
+        return houseOfByCusps(lon) ?? houseOfByWholeSign(lon) ?? "—";
+      }
+
+      // 5) Tabla de POSICIONES
+      const PLANETS = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"];
+      const rowsPos = PLANETS.map(p=>{
+        const lon = lonByPlanet[p];
+        const signo = Number.isFinite(lon)? signNameFromLon(lon) : "—";
+        const grados = Number.isFinite(lon)? degInSign(lon) : "—";
+        const casa = Number.isFinite(lon)? houseOf(lon) : "—";
+        const nombre = {"Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Júpiter":"Júpiter","Jupiter":"Júpiter","Saturn":"Saturno","Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón"}[p];
+        return [nombre, signo, grados, casa];
+      });
+      const headPos = "<thead><tr><th>Planeta</th><th>Signo</th><th>Grados</th><th>Casa</th></tr></thead>";
+      const bodyPos = "<tbody>"+rowsPos.map(r=>"<tr>"+r.map(c=>`<td>${c}</td>`).join("")+"</tr>").join("")+"</tbody>";
+      $pos.innerHTML = `<h2>Posiciones planetarias</h2><table>${headPos}${bodyPos}</table>`;
+
+      // 6) Elementos y Cualidades
+      const countElem = {Fuego:0,Tierra:0,Aire:0,Agua:0};
+      const countMod  = {Cardinal:0,Fijo:0,Mutable:0};
+      let counted=0;
+      PLANETS.forEach(p=>{
+        const lon=lonByPlanet[p];
+        if(Number.isFinite(lon)){
+          const si = Math.floor(clamp360(lon)/30);
+          countElem[SIGN_TO_ELEMENT[si]]++;
+          countMod[SIGN_TO_MODALITY[si]]++;
+          counted++;
+        }
+      });
+      const pct = n => counted? Math.round(n*100/counted) : 0;
+      const elemRows = Object.keys(countElem).map(k=>`<tr><td>${k}</td><td>${pct(countElem[k])}%</td></tr>`).join("");
+      const modRows  = Object.keys(countMod ).map(k=>`<tr><td>${k}</td><td>${pct(countMod[k ])}%</td></tr>`).join("");
+      $em.innerHTML =
+        `<h2>Distribución de elementos y cualidades</h2>
+         <div class="grid-2">
+           <div><table><thead><tr><th>Elemento</th><th>%</th></tr></thead><tbody>${elemRows}</tbody></table></div>
+           <div><table><thead><tr><th>Cualidad</th><th>%</th></tr></thead><tbody>${modRows}</tbody></table></div>
+         </div>`;
+
+      // 7) Aspectos con orbe
+      function lonFromAspect(a, idx){
+        const pref = idx===1 ? 'p1' : 'p2';
+        const candidates = [a[`${pref}_abs_pos`], a[`${pref}_abs_long`], a[`${pref}_abs_longitude`], a[`${pref}_longitude`], a[`${pref}_lon`], a[`${pref}_long`]];
+        for(const v of candidates){ const num = parseAngleAny(v); if(Number.isFinite(num)) return num; }
+        const nested = a[pref] || a[idx===1?'first':'second'] || a[idx===1?'from':'to'] || a[idx===1?'object1':'object2'] || a[idx===1?'point1':'point2'];
+        if(nested){ const v = getLonFromObj(nested); if(Number.isFinite(v)) return v; }
+        return null;
+      }
+      const rowsA = aspects.map(a=>{
+        const key = aspectKey(a.type || a.aspect || a.kind || "");
+        const label= ASPECTO_ES[key] || (a.type||a.aspect||a.kind||"");
+        const target = ASPECT_ANGLE[key];
+        const c1 = toCanon(a.p1_name ?? a.point_1 ?? a.point1 ?? a.p1 ?? a.object1 ?? a.planet1);
+        const c2 = toCanon(a.p2_name ?? a.point_2 ?? a.point2 ?? a.p2 ?? a.object2 ?? a.planet2);
+        if(c1==="True_Node" || c2==="True_Node") return null;
+        const disp1 = POINT_ES[c1] || String(c1).replace(/_/g,' ');
+        const disp2 = POINT_ES[c2] || String(c2).replace(/_/g,' ');
+        let l1 = lonFromAspect(a,1), l2 = lonFromAspect(a,2);
+        let sep = parseAngleAny(a.separation ?? a.sep ?? a.sep_deg ?? a.angle ?? a.angle_deg ?? a.aspect_angle);
+        if(!Number.isFinite(sep) && Number.isFinite(l1) && Number.isFinite(l2)) sep = Math.abs(((l1 - l2 + 540) % 360) - 180);
+        let orb = (Number.isFinite(sep) && Number.isFinite(target)) ? Math.abs(sep - target) : null;
+        if(!Number.isFinite(orb)){
+          const backendOrb = parseAngleAny(a.orbit ?? a.diff ?? a.difference ?? a.delta ?? a.error ?? a.deg_diff ?? a.exactness);
+          if(Number.isFinite(backendOrb)) orb = backendOrb;
+        }
+        const orbStr = Number.isFinite(orb) ? fmtDegMin(orb) : "—";
+        return [label || "—", disp1 || "—", disp2 || "—", orbStr];
+      }).filter(Boolean);
+
+      const headA = "<thead><tr><th>Aspecto</th><th>Cuerpo 1</th><th>Cuerpo 2</th><th>Orbe</th></tr></thead>";
+      const bodyA = "<tbody>"+rowsA.map(r=>"<tr>"+r.map(c=>`<td>${(c??"")||"—"}</td>`).join("")+"</tr>").join("")+"</tbody>";
+      $tabs.innerHTML = `<h2>Aspectos</h2><table>${headA}${bodyA}</table>`;
+
+      // Mostrar y habilitar PDF
+      $out.style.display='block';
+      $btnPDF.disabled=false;
+
+    }catch(e){
+      showAlert("Error: "+(e?.message||e));
+    }finally{
+      $btnGen.disabled=false; $btnGen.textContent="Generar carta";
+    }
+  }
+
+  // Eventos
+  document.getElementById('btn-gen').addEventListener('click', e=>{ e.preventDefault(); generar(); });
+  document.getElementById('btn-pdf').addEventListener('click', e=>{ e.preventDefault(); descargarPDF(); });
+
+})();
+</script>
+</body></html>
+'''
+
 
 
 
